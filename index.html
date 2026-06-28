@@ -402,6 +402,7 @@
     let activeController = null;
     let requestId = 0;
     let userLocation = null;
+    let activeLocation = null;
     let activeBaseLayer = null;
     let resizeTimer = null;
 
@@ -464,10 +465,24 @@
 
     function setBaseLayer(layer, mapActive = layer === mapLayer) {
       if (activeBaseLayer === layer) return;
+
+      const center = map.getCenter();
+      const zoom = map.getZoom();
+      const layerMaxZoom = layer.options.maxZoom ?? 18;
+
       map.removeLayer(activeBaseLayer);
       activeBaseLayer = layer;
       layer.addTo(map);
+      map.setView(center, Math.min(zoom, layerMaxZoom), { animate: false });
       document.getElementById("map").style.background = mapActive ? "#d8dde6" : "#243018";
+
+      if (activeLocation) {
+        showMarkerAt(
+          activeLocation.lat,
+          activeLocation.lng,
+          activeLocation.isCurrentLocation,
+        );
+      }
 
       layerMapBtn.classList.toggle("active", mapActive);
       layerSatBtn.classList.toggle("active", !mapActive);
@@ -475,8 +490,18 @@
       layerSatBtn.setAttribute("aria-pressed", String(!mapActive));
     }
 
-    layerMapBtn.addEventListener("click", () => setBaseLayer(mapLayer, true));
-    layerSatBtn.addEventListener("click", () => setBaseLayer(satelliteLayer, false));
+    const mapControlsEl = document.querySelector(".map-controls");
+    L.DomEvent.disableClickPropagation(mapControlsEl);
+    L.DomEvent.disableScrollPropagation(mapControlsEl);
+
+    layerMapBtn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      setBaseLayer(mapLayer, true);
+    });
+    layerSatBtn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      setBaseLayer(satelliteLayer, false);
+    });
 
     function enableLocateButton() {
       locateBtn.disabled = false;
@@ -486,7 +511,10 @@
       requestCurrentLocation();
     }
 
-    locateBtn.addEventListener("click", returnToCurrentLocation);
+    locateBtn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      returnToCurrentLocation();
+    });
 
     window.addEventListener("resize", () => {
       clearTimeout(resizeTimer);
@@ -700,6 +728,8 @@
         userLocation = { lat, lng };
         enableLocateButton();
       }
+
+      activeLocation = { lat, lng, isCurrentLocation };
 
       goToMapLocation(
         lat,
