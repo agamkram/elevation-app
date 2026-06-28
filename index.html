@@ -103,6 +103,12 @@
       font-family: inherit;
     }
 
+    @media (pointer: coarse) {
+      .leaflet-control-zoom {
+        display: none !important;
+      }
+    }
+
     .map-dot-wrap {
       background: transparent;
       border: none;
@@ -332,7 +338,7 @@
     <h1>US Elevation Map</h1>
     <p class="map-attribution">
       Map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>
-      · Satellite © <a href="https://www.usgs.gov/" target="_blank" rel="noopener noreferrer">USGS</a>
+      · Satellite © <a href="https://www.esri.com/" target="_blank" rel="noopener noreferrer">Esri</a>
     </p>
   </header>
 
@@ -433,6 +439,8 @@
       iconAnchor: [9, 9],
     });
 
+    const isTouchPrimary = window.matchMedia("(pointer: coarse)").matches;
+
     const map = L.map("map", {
       maxBounds: US_BOUNDS,
       maxBoundsViscosity: 0.85,
@@ -444,7 +452,12 @@
       inertiaDeceleration: 2500,
       wheelDebounceTime: 40,
       attributionControl: false,
+      zoomControl: false,
     }).setView([39.5, -98.35], 4);
+
+    if (!isTouchPrimary) {
+      L.control.zoom({ position: "topleft" }).addTo(map);
+    }
 
     const mapLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       ...TILE_OPTIONS,
@@ -452,11 +465,12 @@
     });
 
     const satelliteLayer = L.tileLayer(
-      "https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}",
+      "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
       {
         ...TILE_OPTIONS,
-        maxZoom: 16,
-        maxNativeZoom: 16,
+        detectRetina: true,
+        maxZoom: 19,
+        maxNativeZoom: 19,
       }
     );
 
