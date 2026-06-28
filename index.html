@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta
+    name="description"
+    content="Click a US map to see elevation in feet and meters. Opens at your current location."
+  />
+  <title>US Elevation Map</title>
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""
+  />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap"
+    rel="stylesheet"
+  />
+  <style>
+    :root {
+      --bg: #0f1419;
+      --surface: #1a2332;
+      --surface-2: #243044;
+      --text: #e8edf4;
+      --muted: #8b9cb3;
+      --accent: #3d9cf5;
+      --feet: #4ade80;
+      --meters: #f59e0b;
+      --border: rgba(255, 255, 255, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: "DM Sans", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    header h1 {
+      font-size: 1.125rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+
+    main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      min-height: 0;
+    }
+
+    @media (max-width: 768px) {
+      main {
+        grid-template-columns: 1fr;
+        grid-template-rows: 1fr auto;
+      }
+    }
+
+    #map {
+      min-height: 360px;
+      background: #1e2a3a;
+      z-index: 0;
+    }
+
+    .leaflet-container {
+      font-family: inherit;
+    }
+
+    aside {
+      background: var(--surface);
+      border-left: 1px solid var(--border);
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+      overflow-y: auto;
+    }
+
+    @media (max-width: 768px) {
+      aside {
+        border-left: none;
+        border-top: 1px solid var(--border);
+      }
+    }
+
+    .panel-label {
+      font-size: 0.6875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 0.35rem;
+    }
+
+    .elevation-display {
+      background: var(--surface-2);
+      border-radius: 12px;
+      padding: 1.25rem;
+      border: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+
+    .elevation-feet {
+      font-size: 2.5rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      line-height: 1.1;
+      color: var(--feet);
+    }
+
+    .elevation-meters {
+      font-size: 1.5rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      line-height: 1.2;
+      color: var(--meters);
+      padding-top: 0.35rem;
+      border-top: 1px solid var(--border);
+      margin-top: 0.35rem;
+    }
+
+    .elevation-meters.hidden {
+      display: none;
+    }
+
+    .elevation-status {
+      color: var(--muted);
+      font-size: 1rem;
+      font-weight: 500;
+      line-height: 1.4;
+    }
+
+    .elevation-status.placeholder {
+      font-size: 0.9375rem;
+      font-weight: 400;
+    }
+
+    .elevation-unit {
+      font-size: 0.72em;
+      font-weight: 500;
+      opacity: 0.85;
+      margin-left: 0.2rem;
+    }
+
+    .location-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: var(--accent);
+      background: rgba(61, 156, 245, 0.12);
+      border: 1px solid rgba(61, 156, 245, 0.25);
+      border-radius: 999px;
+      padding: 0.2rem 0.55rem;
+      margin-bottom: 0.5rem;
+      width: fit-content;
+    }
+
+    .location-badge.hidden {
+      display: none;
+    }
+
+    .coords {
+      display: grid;
+      gap: 0.75rem;
+    }
+
+    .coord-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.9375rem;
+      padding: 0.5rem 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .coord-row:last-child {
+      border-bottom: none;
+    }
+
+    .coord-row span:first-child {
+      color: var(--muted);
+    }
+
+    .coord-row span:last-child {
+      font-variant-numeric: tabular-nums;
+      font-weight: 500;
+    }
+
+    .error {
+      color: #f87171;
+      font-size: 0.875rem;
+      line-height: 1.4;
+      margin-top: 0.35rem;
+    }
+
+    .hidden {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>US Elevation Map</h1>
+  </header>
+
+  <main>
+    <div id="map" role="application" aria-label="Interactive map of the United States"></div>
+
+    <aside>
+      <section class="elevation-display" aria-live="polite" aria-busy="true" id="elevation-panel">
+        <div id="location-badge" class="location-badge hidden">Your location</div>
+        <div class="panel-label">Elevation</div>
+        <div id="elevation-feet" class="elevation-status placeholder">
+          Finding your location…
+        </div>
+        <div id="elevation-meters" class="elevation-meters hidden" aria-hidden="true"></div>
+        <p id="error" class="error hidden" role="alert"></p>
+      </section>
+
+      <section class="coords">
+        <div class="panel-label">Location</div>
+        <div class="coord-row">
+          <span>Latitude</span>
+          <span id="lat">—</span>
+        </div>
+        <div class="coord-row">
+          <span>Longitude</span>
+          <span id="lon">—</span>
+        </div>
+      </section>
+    </aside>
+  </main>
+
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""
+  ></script>
+  <script>
+    const FEET_TO_METERS = 0.3048;
+    const US_BOUNDS = L.latLngBounds(
+      L.latLng(18.0, -180.0),
+      L.latLng(72.0, -50.0)
+    );
+
+    const elevationCache = new Map();
+    let marker = null;
+    let activeController = null;
+    let requestId = 0;
+
+    const panelEl = document.getElementById("elevation-panel");
+    const feetEl = document.getElementById("elevation-feet");
+    const metersEl = document.getElementById("elevation-meters");
+    const latEl = document.getElementById("lat");
+    const lonEl = document.getElementById("lon");
+    const errorEl = document.getElementById("error");
+    const locationBadgeEl = document.getElementById("location-badge");
+
+    const map = L.map("map", {
+      maxBounds: US_BOUNDS,
+      maxBoundsViscosity: 0.85,
+      minZoom: 3,
+    }).setView([39.5, -98.35], 4);
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      maxZoom: 19,
+    }).addTo(map);
+
+    window.addEventListener("resize", () => map.invalidateSize());
+
+    function cacheKey(lat, lng) {
+      return `${lat.toFixed(4)},${lng.toFixed(4)}`;
+    }
+
+    function formatCoord(value, positiveSuffix, negativeSuffix) {
+      const abs = Math.abs(value).toFixed(5);
+      return value >= 0 ? `${abs}° ${positiveSuffix}` : `${abs}° ${negativeSuffix}`;
+    }
+
+    function feetToMeters(feet) {
+      return feet * FEET_TO_METERS;
+    }
+
+    function setCoords(lat, lng) {
+      latEl.textContent = formatCoord(lat, "N", "S");
+      lonEl.textContent = formatCoord(lng, "E", "W");
+    }
+
+    function setBusy(isBusy) {
+      panelEl.setAttribute("aria-busy", String(isBusy));
+    }
+
+    function clearError() {
+      errorEl.textContent = "";
+      errorEl.classList.add("hidden");
+    }
+
+    function showError(message) {
+      errorEl.textContent = message;
+      errorEl.classList.remove("hidden");
+    }
+
+    function setIdlePrompt() {
+      feetEl.className = "elevation-status placeholder";
+      feetEl.textContent = "Click the map to query";
+      metersEl.classList.add("hidden");
+      metersEl.setAttribute("aria-hidden", "true");
+      setBusy(false);
+    }
+
+    function setLoading(message = "Looking up elevation…") {
+      feetEl.className = "elevation-status";
+      feetEl.textContent = message;
+      metersEl.classList.add("hidden");
+      metersEl.setAttribute("aria-hidden", "true");
+      clearError();
+      setBusy(true);
+    }
+
+    function setUnavailable(message) {
+      feetEl.className = "elevation-status placeholder";
+      feetEl.textContent = "Unavailable";
+      metersEl.classList.add("hidden");
+      metersEl.setAttribute("aria-hidden", "true");
+      showError(message);
+      setBusy(false);
+    }
+
+    function setResult(feet, lat, lng) {
+      const roundedFeet = Math.round(feet);
+      const roundedMeters = Math.round(feetToMeters(feet));
+
+      feetEl.className = "elevation-feet";
+      feetEl.innerHTML =
+        `${roundedFeet.toLocaleString()}<span class="elevation-unit">ft</span>`;
+
+      metersEl.className = "elevation-meters";
+      metersEl.innerHTML =
+        `${roundedMeters.toLocaleString()}<span class="elevation-unit">m</span>`;
+      metersEl.classList.remove("hidden");
+      metersEl.setAttribute("aria-hidden", "false");
+
+      setCoords(lat, lng);
+      clearError();
+      setBusy(false);
+    }
+
+    function placeMarker(latlng, isCurrentLocation = false) {
+      if (marker) {
+        marker.setLatLng(latlng);
+      } else {
+        marker = L.circleMarker(latlng, {
+          radius: 8,
+          fillColor: isCurrentLocation ? "#f59e0b" : "#3d9cf5",
+          color: "#ffffff",
+          weight: 2,
+          opacity: 1,
+          fillOpacity: 0.95,
+        }).addTo(map);
+      }
+
+      if (isCurrentLocation) {
+        locationBadgeEl.classList.remove("hidden");
+        marker.setStyle({ fillColor: "#f59e0b" });
+      } else {
+        locationBadgeEl.classList.add("hidden");
+        marker.setStyle({ fillColor: "#3d9cf5" });
+      }
+    }
+
+    async function fetchElevation(lat, lng, signal) {
+      const key = cacheKey(lat, lng);
+      if (elevationCache.has(key)) {
+        return elevationCache.get(key);
+      }
+
+      const url = new URL("https://epqs.nationalmap.gov/v1/json");
+      url.searchParams.set("x", String(lng));
+      url.searchParams.set("y", String(lat));
+      url.searchParams.set("units", "Feet");
+      url.searchParams.set("wkid", "4326");
+
+      const response = await fetch(url, { signal });
+      if (!response.ok) {
+        throw new Error(`Elevation service returned ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (data.value == null || Number.isNaN(data.value)) {
+        throw new Error("No elevation data for this location.");
+      }
+
+      elevationCache.set(key, data.value);
+      return data.value;
+    }
+
+    async function queryLocation(lat, lng, options = {}) {
+      const { isCurrentLocation = false, zoomTo = null } = options;
+      const latlng = L.latLng(lat, lng);
+
+      placeMarker(latlng, isCurrentLocation);
+      setCoords(lat, lng);
+
+      const cached = elevationCache.get(cacheKey(lat, lng));
+      if (cached != null) {
+        if (zoomTo != null) {
+          map.setView(latlng, zoomTo, { animate: true });
+        }
+        setResult(cached, lat, lng);
+        return;
+      }
+
+      if (activeController) {
+        activeController.abort();
+      }
+      activeController = new AbortController();
+      const currentRequest = ++requestId;
+      const signal = activeController.signal;
+
+      setLoading();
+
+      if (zoomTo != null) {
+        map.setView(latlng, zoomTo, { animate: true });
+      }
+
+      try {
+        const feet = await fetchElevation(lat, lng, signal);
+        if (currentRequest !== requestId) {
+          return;
+        }
+        setResult(feet, lat, lng);
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") {
+          return;
+        }
+        if (currentRequest !== requestId) {
+          return;
+        }
+        setUnavailable(
+          err instanceof Error
+            ? err.message
+            : "Could not fetch elevation. Try again."
+        );
+      }
+    }
+
+    function handleLocationFailure(message) {
+      locationBadgeEl.classList.add("hidden");
+      setIdlePrompt();
+      showError(message);
+    }
+
+    function requestCurrentLocation() {
+      if (!navigator.geolocation) {
+        handleLocationFailure(
+          "Geolocation is not supported. Click the map to pick a point."
+        );
+        return;
+      }
+
+      setLoading("Finding your location…");
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          queryLocation(latitude, longitude, {
+            isCurrentLocation: true,
+            zoomTo: 12,
+          });
+        },
+        (error) => {
+          const messages = {
+            1: "Location permission denied. Click the map to pick a point.",
+            2: "Location unavailable. Click the map to pick a point.",
+            3: "Location request timed out. Click the map to pick a point.",
+          };
+          handleLocationFailure(
+            messages[error.code] || "Could not determine your location."
+          );
+        },
+        {
+          enableHighAccuracy: false,
+          timeout: 10000,
+          maximumAge: 300000,
+        }
+      );
+    }
+
+    map.on("click", (event) => {
+      const { lat, lng } = event.latlng;
+      queryLocation(lat, lng);
+    });
+
+    map.whenReady(() => {
+      map.invalidateSize();
+      requestCurrentLocation();
+    });
+  </script>
+</body>
+</html>
