@@ -102,18 +102,6 @@
       font-family: inherit;
     }
 
-    .leaflet-container img.leaflet-tile {
-      backface-visibility: hidden;
-      -webkit-backface-visibility: hidden;
-    }
-
-    .leaflet-layer.satellite-tiles img.leaflet-tile {
-      width: 257px !important;
-      height: 257px !important;
-      margin-left: -0.5px;
-      margin-top: -0.5px;
-    }
-
     .map-dot-wrap {
       background: transparent;
       border: none;
@@ -343,7 +331,7 @@
     <h1>US Elevation Map</h1>
     <p class="map-attribution">
       Map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>
-      · Satellite © <a href="https://www.esri.com/" target="_blank" rel="noopener noreferrer">Esri</a>
+      · Satellite © <a href="https://www.usgs.gov/" target="_blank" rel="noopener noreferrer">USGS</a>
     </p>
   </header>
 
@@ -431,6 +419,7 @@
       updateWhenIdle: true,
       updateWhenZooming: true,
       keepBuffer: 2,
+      tileSize: 256,
     };
 
     const dotIcon = L.divIcon({
@@ -444,6 +433,8 @@
       maxBounds: US_BOUNDS,
       maxBoundsViscosity: 0.85,
       minZoom: 3,
+      zoomSnap: 1,
+      zoomDelta: 1,
       fadeAnimation: false,
       zoomAnimation: !window.matchMedia("(prefers-reduced-motion: reduce)").matches,
       inertiaDeceleration: 2500,
@@ -457,12 +448,11 @@
     });
 
     const satelliteLayer = L.tileLayer(
-      "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+      "https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}",
       {
         ...TILE_OPTIONS,
-        maxZoom: 19,
-        maxNativeZoom: 19,
-        className: "satellite-tiles",
+        maxZoom: 16,
+        maxNativeZoom: 16,
       }
     );
 
@@ -474,6 +464,7 @@
       map.removeLayer(activeBaseLayer);
       activeBaseLayer = layer;
       layer.addTo(map);
+      document.getElementById("map").style.background = mapActive ? "#d8dde6" : "#243018";
 
       layerMapBtn.classList.toggle("active", mapActive);
       layerSatBtn.classList.toggle("active", !mapActive);
