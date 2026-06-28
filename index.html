@@ -380,8 +380,7 @@
     );
 
     const elevationCache = new Map();
-    let locationMarker = null;
-    let queryMarker = null;
+    let marker = null;
     let activeController = null;
     let requestId = 0;
     let userLocation = null;
@@ -552,75 +551,23 @@
       setBusy(false);
     }
 
-    function sameLocation(aLat, aLng, bLat, bLng) {
-      return cacheKey(aLat, aLng) === cacheKey(bLat, bLng);
-    }
-
-    function ensureLocationMarker(latlng) {
-      if (locationMarker) {
-        locationMarker.setLatLng(latlng);
-        return;
-      }
-
-      locationMarker = L.circleMarker(latlng, {
-        radius: 9,
-        fillColor: "#f59e0b",
-        color: "#ffffff",
-        weight: 2.5,
-        opacity: 1,
-        fillOpacity: 0.95,
-        renderer: markerRenderer,
-        pane: "markerPane",
-      }).addTo(map);
-    }
-
-    function ensureQueryMarker(latlng) {
-      if (queryMarker) {
-        queryMarker.setLatLng(latlng);
-        return;
-      }
-
-      queryMarker = L.circleMarker(latlng, {
-        radius: 8,
-        fillColor: "#3d9cf5",
-        color: "#ffffff",
-        weight: 2,
-        opacity: 1,
-        fillOpacity: 0.95,
-        renderer: markerRenderer,
-        pane: "markerPane",
-      }).addTo(map);
-    }
-
-    function clearQueryMarker() {
-      if (!queryMarker) return;
-      map.removeLayer(queryMarker);
-      queryMarker = null;
-    }
-
     function placeMarker(latlng, isCurrentLocation = false) {
-      if (isCurrentLocation) {
-        ensureLocationMarker(latlng);
-        clearQueryMarker();
-        locationBadgeEl.classList.remove("hidden");
-        return;
+      if (marker) {
+        marker.setLatLng(latlng);
+      } else {
+        marker = L.circleMarker(latlng, {
+          radius: 8,
+          fillColor: "#3d9cf5",
+          color: "#ffffff",
+          weight: 2,
+          opacity: 1,
+          fillOpacity: 0.95,
+          renderer: markerRenderer,
+          pane: "markerPane",
+        }).addTo(map);
       }
 
-      if (
-        userLocation &&
-        sameLocation(latlng.lat, latlng.lng, userLocation.lat, userLocation.lng)
-      ) {
-        ensureLocationMarker(latlng);
-        clearQueryMarker();
-        locationBadgeEl.classList.remove("hidden");
-        return;
-      }
-
-      ensureQueryMarker(latlng);
-      if (userLocation) {
-        ensureLocationMarker(L.latLng(userLocation.lat, userLocation.lng));
-      }
-      locationBadgeEl.classList.add("hidden");
+      locationBadgeEl.classList.toggle("hidden", !isCurrentLocation);
     }
 
     async function fetchElevation(lat, lng, signal) {
