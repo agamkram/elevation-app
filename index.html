@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f1419" />
   <meta
     name="description"
     content="Click a US map to see elevation in feet and meters. Opens at your current location."
@@ -43,32 +44,40 @@
       padding: 0;
     }
 
+    html {
+      height: 100%;
+    }
+
     body {
       font-family: "DM Sans", system-ui, sans-serif;
       background: var(--bg);
       color: var(--text);
-      min-height: 100vh;
+      height: 100dvh;
+      max-height: 100dvh;
+      overflow: hidden;
       display: flex;
       flex-direction: column;
     }
 
     header {
-      padding: 1rem 1.25rem;
+      flex-shrink: 0;
+      padding: 0.5rem 1rem;
+      padding-top: max(0.5rem, env(safe-area-inset-top));
       border-bottom: 1px solid var(--border);
       background: var(--surface);
     }
 
     header h1 {
-      font-size: 1.125rem;
+      font-size: 0.95rem;
       font-weight: 600;
       letter-spacing: -0.02em;
     }
 
     .map-attribution {
-      margin-top: 0.2rem;
-      font-size: 0.6875rem;
+      margin-top: 0.1rem;
+      font-size: 0.6rem;
       color: var(--muted);
-      line-height: 1.3;
+      line-height: 1.25;
     }
 
     .map-attribution a {
@@ -84,8 +93,9 @@
     main {
       flex: 1;
       display: grid;
-      grid-template-columns: 1fr 320px;
+      grid-template-columns: 1fr 220px;
       min-height: 0;
+      overflow: hidden;
     }
 
     @media (max-width: 768px) {
@@ -97,7 +107,8 @@
 
     #map {
       position: relative;
-      min-height: 360px;
+      min-height: 0;
+      height: 100%;
       background: #d8dde6;
       z-index: 0;
     }
@@ -130,41 +141,56 @@
     aside {
       background: var(--surface);
       border-left: 1px solid var(--border);
-      padding: 1.25rem;
+      padding: 0.65rem 0.75rem;
       display: flex;
       flex-direction: column;
-      gap: 1.25rem;
+      gap: 0.55rem;
       overflow-y: auto;
+      min-height: 0;
     }
 
     @media (max-width: 768px) {
       aside {
+        flex-shrink: 0;
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: stretch;
+        gap: 0.45rem;
+        padding: 0.45rem 0.65rem;
+        padding-bottom: max(0.45rem, env(safe-area-inset-bottom));
         border-left: none;
         border-top: 1px solid var(--border);
       }
     }
 
     .panel-label {
-      font-size: 0.6875rem;
+      font-size: 0.6rem;
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.06em;
       color: var(--muted);
-      margin-bottom: 0.35rem;
+      margin-bottom: 0.2rem;
     }
 
     .elevation-display {
       background: var(--surface-2);
-      border-radius: 12px;
-      padding: 1.25rem;
+      border-radius: 10px;
+      padding: 0.65rem 0.75rem;
       border: 1px solid var(--border);
       display: flex;
       flex-direction: column;
-      gap: 0.35rem;
+      gap: 0.15rem;
+      min-width: 0;
+    }
+
+    @media (max-width: 768px) {
+      .elevation-display {
+        flex: 1 1 58%;
+      }
     }
 
     .elevation-feet {
-      font-size: 2.5rem;
+      font-size: 1.55rem;
       font-weight: 700;
       letter-spacing: -0.03em;
       line-height: 1.1;
@@ -172,25 +198,25 @@
     }
 
     .elevation-meters {
-      font-size: 1.5rem;
+      font-size: 0.95rem;
       font-weight: 600;
       letter-spacing: -0.02em;
       line-height: 1.2;
       color: var(--meters);
-      padding-top: 0.35rem;
+      padding-top: 0.2rem;
       border-top: 1px solid var(--border);
-      margin-top: 0.35rem;
+      margin-top: 0.15rem;
     }
 
     .elevation-status {
       color: var(--muted);
-      font-size: 1rem;
+      font-size: 0.8125rem;
       font-weight: 500;
-      line-height: 1.4;
+      line-height: 1.35;
     }
 
     .elevation-status.placeholder {
-      font-size: 0.9375rem;
+      font-size: 0.75rem;
       font-weight: 400;
     }
 
@@ -204,29 +230,38 @@
     .location-badge {
       display: inline-flex;
       align-items: center;
-      gap: 0.35rem;
-      font-size: 0.75rem;
+      gap: 0.25rem;
+      font-size: 0.625rem;
       font-weight: 500;
       color: var(--accent);
       background: rgba(61, 156, 245, 0.12);
       border: 1px solid rgba(61, 156, 245, 0.25);
       border-radius: 999px;
-      padding: 0.2rem 0.55rem;
-      margin-bottom: 0.5rem;
+      padding: 0.12rem 0.45rem;
+      margin-bottom: 0.25rem;
       width: fit-content;
     }
 
     .coords {
       display: grid;
-      gap: 0.75rem;
+      gap: 0.35rem;
+      min-width: 0;
+    }
+
+    @media (max-width: 768px) {
+      .coords {
+        flex: 1 1 38%;
+        gap: 0.15rem;
+      }
     }
 
     .coord-row {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      font-size: 0.9375rem;
-      padding: 0.5rem 0;
+      gap: 0.5rem;
+      font-size: 0.75rem;
+      padding: 0.2rem 0;
       border-bottom: 1px solid var(--border);
     }
 
@@ -245,9 +280,9 @@
 
     .error {
       color: #f87171;
-      font-size: 0.875rem;
-      line-height: 1.4;
-      margin-top: 0.35rem;
+      font-size: 0.7rem;
+      line-height: 1.35;
+      margin-top: 0.2rem;
     }
 
     .hidden {
