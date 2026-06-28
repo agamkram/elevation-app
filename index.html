@@ -14,6 +14,7 @@
     integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
     crossorigin=""
   />
+  <link rel="preconnect" href="https://api.open-meteo.com" crossorigin />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
@@ -389,12 +390,14 @@
   ></script>
   <script>
     const FEET_TO_METERS = 0.3048;
+    const METERS_TO_FEET = 3.280839895;
     const US_BOUNDS = L.latLngBounds(
       L.latLng(18.0, -180.0),
       L.latLng(72.0, -50.0)
     );
 
     const elevationCache = new Map();
+    const elevationInflight = new Map();
     let marker = null;
     let activeController = null;
     let requestId = 0;
@@ -600,12 +603,26 @@
       setTimeout(resync, animate ? 450 : 0);
     }
 
-    async function fetchElevation(lat, lng, signal) {
-      const key = cacheKey(lat, lng);
-      if (elevationCache.has(key)) {
-        return elevationCache.get(key);
+    async function fetchOpenMeteoElevation(lat, lng, signal) {
+      const url = new URL("https://api.open-meteo.com/v1/elevation");
+      url.searchParams.set("latitude", String(lat));
+      url.searchParams.set("longitude", String(lng));
+
+      const response = await fetch(url, { signal });
+      if (!response.ok) {
+        throw new Error(`Elevation service returned ${response.status}`);
       }
 
+      const data = await response.json();
+      const meters = data.elevation?.[0];
+      if (meters == null || !Number.isFinite(meters)) {
+        throw new Error("No elevation data for this location.");
+      }
+
+      return meters * METERS_TO_FEET;
+    }
+
+    async function fetchUsgsElevation(lat, lng, signal) {
       const url = new URL("https://epqs.nationalmap.gov/v1/json");
       url.searchParams.set("x", String(lng));
       url.searchParams.set("y", String(lat));
@@ -622,8 +639,54 @@
         throw new Error("No elevation data for this location.");
       }
 
-      elevationCache.set(key, data.value);
       return data.value;
+    }
+
+    async function fetchElevation(lat, lng, signal) {
+      const key = cacheKey(lat, lng);
+      if (elevationCache.has(key)) {
+        return elevationCache.get(key);
+      }
+
+      if (elevationInflight.has(key)) {
+        return elevationInflight.get(key);
+      }
+
+      const task = (async () => {
+        try {
+          const feet = await fetchOpenMeteoElevation(lat, lng, signal);
+          elevationCache.set(key, feet);
+          return feet;
+        } catch (fastError) {
+          if (fastError instanceof DOMException && fastError.name === "AbortError") {
+            throw fastError;
+          }
+        }
+
+        const feet = await fetchUsgsElevation(lat, lng, signal);
+        elevationCache.set(key, feet);
+        return feet;
+      })();
+
+      elevationInflight.set(key, task);
+
+      try {
+        return await task;
+      } finally {
+        if (elevationInflight.get(key) === task) {
+          elevationInflight.delete(key);
+        }
+      }
+    }
+
+    function prefetchElevation(lat, lng) {
+      const key = cacheKey(lat, lng);
+      if (elevationCache.has(key) || elevationInflight.has(key)) {
+        return;
+      }
+
+      const controller = new AbortController();
+      fetchElevation(lat, lng, controller.signal).catch(() => {});
     }
 
     async function queryLocation(lat, lng, options = {}) {
@@ -725,6 +788,14 @@
         }
       );
     }
+
+    map.on("pointerdown", (event) => {
+      if (event.originalEvent.target.closest(".map-controls")) {
+        return;
+      }
+      const { lat, lng } = event.latlng;
+      prefetchElevation(lat, lng);
+    });
 
     map.on("click", (event) => {
       const { lat, lng } = event.latlng;
