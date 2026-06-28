@@ -13,7 +13,7 @@ else
 fi
 
 echo ""
-echo "Pushing to github.com/agamkram/us-elevation-map ..."
+echo "Pushing to github.com/agamkram/elevation-app ..."
 git push -u origin main
 
 if [ $? -eq 0 ]; then
@@ -22,8 +22,7 @@ if [ $? -eq 0 ]; then
 else
   echo ""
   echo "Push failed."
-  echo "If the repo does not exist yet, create it at https://github.com/new"
-  echo "Name: us-elevation-map (empty — no README)"
+  echo "Make sure you added the SSH key to GitHub (see ADD-SSH-KEY-TO-GITHUB.txt)."
 fi
 
 echo ""
