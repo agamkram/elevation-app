@@ -75,6 +75,7 @@
     }
 
     #map {
+      position: relative;
       min-height: 360px;
       background: #1e2a3a;
       z-index: 0;
@@ -218,6 +219,79 @@
     .hidden {
       display: none;
     }
+
+    .map-controls {
+      position: absolute;
+      top: 0.75rem;
+      right: 0.75rem;
+      z-index: 500;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 0.5rem;
+      pointer-events: none;
+    }
+
+    .layer-toggle {
+      pointer-events: auto;
+      display: inline-flex;
+      padding: 0.2rem;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: rgba(26, 35, 50, 0.92);
+      backdrop-filter: blur(8px);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
+    }
+
+    .layer-toggle button {
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      font: inherit;
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 0.45rem 0.7rem;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.15s ease, color 0.15s ease;
+    }
+
+    .layer-toggle button.active {
+      background: rgba(61, 156, 245, 0.2);
+      color: var(--text);
+    }
+
+    .locate-btn {
+      pointer-events: auto;
+      width: 2.5rem;
+      height: 2.5rem;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: rgba(26, 35, 50, 0.92);
+      backdrop-filter: blur(8px);
+      color: var(--accent);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
+      transition: background 0.15s ease, opacity 0.15s ease;
+    }
+
+    .locate-btn:hover:not(:disabled) {
+      background: rgba(61, 156, 245, 0.14);
+    }
+
+    .locate-btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    .locate-btn svg {
+      width: 1.15rem;
+      height: 1.15rem;
+      fill: currentColor;
+    }
   </style>
 </head>
 <body>
@@ -226,7 +300,26 @@
   </header>
 
   <main>
-    <div id="map" role="application" aria-label="Interactive map of the United States"></div>
+    <div id="map" role="application" aria-label="Interactive map of the United States">
+      <div class="map-controls">
+        <div class="layer-toggle" role="group" aria-label="Map style">
+          <button type="button" id="layer-map-btn" class="active" aria-pressed="true">Map</button>
+          <button type="button" id="layer-sat-btn" aria-pressed="false">Satellite</button>
+        </div>
+        <button
+          type="button"
+          id="locate-btn"
+          class="locate-btn"
+          aria-label="Return to my location"
+          title="My location"
+          disabled
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm8.94 3A8.994 8.994 0 0 0 13 3.06V1h-2v2.06A8.994 8.994 0 0 0 3.06 11H1v2h2.06A8.994 8.994 0 0 0 11 20.94V23h2v-2.06A8.994 8.994 0 0 0 20.94 13H23v-2h-2.06ZM12 19a7 7 0 1 1 0-14 7 7 0 0 1 0 14Z" />
+          </svg>
+        </button>
+      </div>
+    </div>
 
     <aside>
       <section class="elevation-display" aria-live="polite" aria-busy="true" id="elevation-panel">
@@ -269,6 +362,9 @@
     let marker = null;
     let activeController = null;
     let requestId = 0;
+    let userLocation = null;
+    let activeBaseLayer = null;
+    let resizeTimer = null;
 
     const panelEl = document.getElementById("elevation-panel");
     const feetEl = document.getElementById("elevation-feet");
@@ -277,20 +373,86 @@
     const lonEl = document.getElementById("lon");
     const errorEl = document.getElementById("error");
     const locationBadgeEl = document.getElementById("location-badge");
+    const layerMapBtn = document.getElementById("layer-map-btn");
+    const layerSatBtn = document.getElementById("layer-sat-btn");
+    const locateBtn = document.getElementById("locate-btn");
+
+    const TILE_OPTIONS = {
+      maxZoom: 18,
+      detectRetina: false,
+      updateWhenIdle: true,
+      updateWhenZooming: false,
+      keepBuffer: 1,
+    };
 
     const map = L.map("map", {
       maxBounds: US_BOUNDS,
       maxBoundsViscosity: 0.85,
       minZoom: 3,
+      preferCanvas: true,
+      fadeAnimation: false,
+      zoomAnimation: !window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+      inertiaDeceleration: 2500,
+      wheelDebounceTime: 40,
     }).setView([39.5, -98.35], 4);
 
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    const mapLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      ...TILE_OPTIONS,
+      subdomains: "abc",
       attribution:
         '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-      maxZoom: 19,
-    }).addTo(map);
+    });
 
-    window.addEventListener("resize", () => map.invalidateSize());
+    const satelliteLayer = L.tileLayer(
+      "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+      {
+        ...TILE_OPTIONS,
+        maxZoom: 17,
+        attribution:
+          "Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics",
+      }
+    );
+
+    activeBaseLayer = mapLayer;
+    mapLayer.addTo(map);
+
+    function setBaseLayer(layer, mapActive = layer === mapLayer) {
+      if (activeBaseLayer === layer) return;
+      map.removeLayer(activeBaseLayer);
+      activeBaseLayer = layer;
+      layer.addTo(map);
+
+      layerMapBtn.classList.toggle("active", mapActive);
+      layerSatBtn.classList.toggle("active", !mapActive);
+      layerMapBtn.setAttribute("aria-pressed", String(mapActive));
+      layerSatBtn.setAttribute("aria-pressed", String(!mapActive));
+    }
+
+    layerMapBtn.addEventListener("click", () => setBaseLayer(mapLayer, true));
+    layerSatBtn.addEventListener("click", () => setBaseLayer(satelliteLayer, false));
+
+    function enableLocateButton() {
+      locateBtn.disabled = false;
+    }
+
+    function returnToCurrentLocation() {
+      if (!userLocation) {
+        requestCurrentLocation();
+        return;
+      }
+
+      queryLocation(userLocation.lat, userLocation.lng, {
+        isCurrentLocation: true,
+        zoomTo: 12,
+      });
+    }
+
+    locateBtn.addEventListener("click", returnToCurrentLocation);
+
+    window.addEventListener("resize", () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => map.invalidateSize(), 150);
+    });
 
     function cacheKey(lat, lng) {
       return `${lat.toFixed(4)},${lng.toFixed(4)}`;
@@ -422,13 +584,18 @@
       const { isCurrentLocation = false, zoomTo = null } = options;
       const latlng = L.latLng(lat, lng);
 
+      if (isCurrentLocation) {
+        userLocation = { lat, lng };
+        enableLocateButton();
+      }
+
       placeMarker(latlng, isCurrentLocation);
       setCoords(lat, lng);
 
       const cached = elevationCache.get(cacheKey(lat, lng));
       if (cached != null) {
         if (zoomTo != null) {
-          map.setView(latlng, zoomTo, { animate: true });
+          map.setView(latlng, zoomTo, { animate: map.options.zoomAnimation });
         }
         setResult(cached, lat, lng);
         return;
@@ -444,7 +611,7 @@
       setLoading();
 
       if (zoomTo != null) {
-        map.setView(latlng, zoomTo, { animate: true });
+        map.setView(latlng, zoomTo, { animate: map.options.zoomAnimation });
       }
 
       try {
