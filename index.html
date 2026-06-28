@@ -440,8 +440,6 @@
       iconAnchor: [9, 9],
     });
 
-    let panEndHandler = null;
-
     const map = L.map("map", {
       maxBounds: US_BOUNDS,
       maxBoundsViscosity: 0.85,
@@ -491,15 +489,7 @@
     }
 
     function returnToCurrentLocation() {
-      if (!userLocation) {
-        requestCurrentLocation();
-        return;
-      }
-
-      queryLocation(userLocation.lat, userLocation.lng, {
-        isCurrentLocation: true,
-        zoomTo: 12,
-      });
+      requestCurrentLocation();
     }
 
     locateBtn.addEventListener("click", returnToCurrentLocation);
@@ -586,38 +576,37 @@
       setBusy(false);
     }
 
-    function placeMarker(latlng, isCurrentLocation = false) {
+    function showMarkerAt(lat, lng, isCurrentLocation = false) {
+      const latlng = L.latLng(lat, lng);
+
       if (marker) {
-        marker.setLatLng(latlng);
-      } else {
-        marker = L.marker(latlng, {
-          icon: dotIcon,
-          zIndexOffset: 1000,
-          interactive: false,
-        }).addTo(map);
+        map.removeLayer(marker);
+        marker = null;
       }
+
+      marker = L.marker(latlng, {
+        icon: dotIcon,
+        zIndexOffset: 1000,
+        interactive: false,
+      }).addTo(map);
 
       locationBadgeEl.classList.toggle("hidden", !isCurrentLocation);
     }
 
-    function panToLocation(latlng, zoom, isCurrentLocation) {
-      placeMarker(latlng, isCurrentLocation);
+    function goToMapLocation(lat, lng, zoom, isCurrentLocation, animate = true) {
+      const latlng = L.latLng(lat, lng);
+      showMarkerAt(lat, lng, isCurrentLocation);
 
       if (zoom == null) {
         return;
       }
 
-      if (panEndHandler) {
-        map.off("moveend", panEndHandler);
-      }
+      map.stop();
+      map.setView(latlng, zoom, { animate });
 
-      panEndHandler = () => {
-        placeMarker(latlng, isCurrentLocation);
-        panEndHandler = null;
-      };
-
-      map.once("moveend", panEndHandler);
-      map.setView(latlng, zoom, { animate: map.options.zoomAnimation });
+      const resync = () => showMarkerAt(lat, lng, isCurrentLocation);
+      map.once("moveend", resync);
+      setTimeout(resync, animate ? 450 : 0);
     }
 
     async function fetchElevation(lat, lng, signal) {
@@ -647,15 +636,24 @@
     }
 
     async function queryLocation(lat, lng, options = {}) {
-      const { isCurrentLocation = false, zoomTo = null } = options;
-      const latlng = L.latLng(lat, lng);
+      const {
+        isCurrentLocation = false,
+        zoomTo = null,
+        animateMap = true,
+      } = options;
 
       if (isCurrentLocation) {
         userLocation = { lat, lng };
         enableLocateButton();
       }
 
-      panToLocation(latlng, zoomTo, isCurrentLocation);
+      goToMapLocation(
+        lat,
+        lng,
+        zoomTo,
+        isCurrentLocation,
+        isCurrentLocation ? false : animateMap,
+      );
       setCoords(lat, lng);
 
       const cached = elevationCache.get(cacheKey(lat, lng));
@@ -716,6 +714,7 @@
           queryLocation(latitude, longitude, {
             isCurrentLocation: true,
             zoomTo: 12,
+            animateMap: false,
           });
         },
         (error) => {
