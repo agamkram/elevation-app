@@ -15,10 +15,13 @@
     crossorigin=""
   />
   <link rel="preconnect" href="https://api.open-meteo.com" crossorigin />
+  <link rel="preconnect" href="https://a.tile.openstreetmap.org" crossorigin />
+  <link rel="preconnect" href="https://server.arcgisonline.com" crossorigin />
+  <link rel="preconnect" href="https://epqs.nationalmap.gov" crossorigin />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
-    href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap"
+    href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap"
     rel="stylesheet"
   />
   <style>
@@ -179,10 +182,6 @@
       margin-top: 0.35rem;
     }
 
-    .elevation-meters.hidden {
-      display: none;
-    }
-
     .elevation-status {
       color: var(--muted);
       font-size: 1rem;
@@ -215,10 +214,6 @@
       padding: 0.2rem 0.55rem;
       margin-bottom: 0.5rem;
       width: fit-content;
-    }
-
-    .location-badge.hidden {
-      display: none;
     }
 
     .coords {
@@ -402,6 +397,7 @@
       L.latLng(72.0, -50.0)
     );
 
+    const ELEVATION_CACHE_MAX = 200;
     const elevationCache = new Map();
     const elevationInflight = new Map();
     let marker = null;
@@ -422,6 +418,7 @@
     const layerMapBtn = document.getElementById("layer-map-btn");
     const layerSatBtn = document.getElementById("layer-sat-btn");
     const locateBtn = document.getElementById("locate-btn");
+    const mapEl = document.getElementById("map");
 
     const TILE_OPTIONS = {
       maxZoom: 18,
@@ -488,7 +485,7 @@
       activeBaseLayer = layer;
       layer.addTo(map);
       map.setView(center, Math.min(zoom, layerMaxZoom), { animate: false });
-      document.getElementById("map").style.background = mapActive ? "#d8dde6" : "#243018";
+      mapEl.style.background = mapActive ? "#d8dde6" : "#243018";
 
       if (activeLocation) {
         showMarkerAt(
@@ -517,17 +514,17 @@
       setBaseLayer(satelliteLayer, false);
     });
 
-    function enableLocateButton() {
-      locateBtn.disabled = false;
-    }
-
-    function returnToCurrentLocation() {
-      requestCurrentLocation();
-    }
-
     locateBtn.addEventListener("click", (event) => {
       event.stopPropagation();
-      returnToCurrentLocation();
+      if (userLocation) {
+        queryLocation(userLocation.lat, userLocation.lng, {
+          isCurrentLocation: true,
+          zoomTo: 12,
+          animateMap: true,
+        });
+        return;
+      }
+      requestCurrentLocation();
     });
 
     window.addEventListener("resize", () => {
@@ -537,6 +534,13 @@
 
     function cacheKey(lat, lng) {
       return `${lat.toFixed(4)},${lng.toFixed(4)}`;
+    }
+
+    function cacheElevation(key, feet) {
+      if (elevationCache.size >= ELEVATION_CACHE_MAX && !elevationCache.has(key)) {
+        elevationCache.delete(elevationCache.keys().next().value);
+      }
+      elevationCache.set(key, feet);
     }
 
     function formatCoord(value, positiveSuffix, negativeSuffix) {
@@ -616,15 +620,14 @@
       const latlng = L.latLng(lat, lng);
 
       if (marker) {
-        map.removeLayer(marker);
-        marker = null;
+        marker.setLatLng(latlng);
+      } else {
+        marker = L.marker(latlng, {
+          icon: dotIcon,
+          zIndexOffset: 1000,
+          interactive: false,
+        }).addTo(map);
       }
-
-      marker = L.marker(latlng, {
-        icon: dotIcon,
-        zIndexOffset: 1000,
-        interactive: false,
-      }).addTo(map);
 
       locationBadgeEl.classList.toggle("hidden", !isCurrentLocation);
     }
@@ -639,10 +642,6 @@
 
       map.stop();
       map.setView(latlng, zoom, { animate });
-
-      const resync = () => showMarkerAt(lat, lng, isCurrentLocation);
-      map.once("moveend", resync);
-      setTimeout(resync, animate ? 450 : 0);
     }
 
     async function fetchOpenMeteoElevation(lat, lng, signal) {
@@ -697,7 +696,7 @@
       const task = (async () => {
         try {
           const feet = await fetchOpenMeteoElevation(lat, lng, signal);
-          elevationCache.set(key, feet);
+          cacheElevation(key, feet);
           return feet;
         } catch (fastError) {
           if (fastError instanceof DOMException && fastError.name === "AbortError") {
@@ -706,7 +705,7 @@
         }
 
         const feet = await fetchUsgsElevation(lat, lng, signal);
-        elevationCache.set(key, feet);
+        cacheElevation(key, feet);
         return feet;
       })();
 
@@ -740,7 +739,7 @@
 
       if (isCurrentLocation) {
         userLocation = { lat, lng };
-        enableLocateButton();
+        locateBtn.disabled = false;
       }
 
       activeLocation = { lat, lng, isCurrentLocation };
@@ -752,7 +751,6 @@
         isCurrentLocation,
         isCurrentLocation ? false : animateMap,
       );
-      setCoords(lat, lng);
 
       const cached = elevationCache.get(cacheKey(lat, lng));
       if (cached != null) {
@@ -833,16 +831,9 @@
       );
     }
 
-    map.on("pointerdown", (event) => {
-      if (event.originalEvent.target.closest(".map-controls")) {
-        return;
-      }
-      const { lat, lng } = event.latlng;
-      prefetchElevation(lat, lng);
-    });
-
     map.on("click", (event) => {
       const { lat, lng } = event.latlng;
+      prefetchElevation(lat, lng);
       queryLocation(lat, lng);
     });
 
