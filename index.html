@@ -102,6 +102,33 @@
       font-family: inherit;
     }
 
+    .leaflet-container img.leaflet-tile {
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
+    }
+
+    .leaflet-layer.satellite-tiles img.leaflet-tile {
+      width: 257px !important;
+      height: 257px !important;
+      margin-left: -0.5px;
+      margin-top: -0.5px;
+    }
+
+    .map-dot-wrap {
+      background: transparent;
+      border: none;
+    }
+
+    .map-dot {
+      display: block;
+      width: 14px;
+      height: 14px;
+      background: #3d9cf5;
+      border: 2px solid #ffffff;
+      border-radius: 50%;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+    }
+
     aside {
       background: var(--surface);
       border-left: 1px solid var(--border);
@@ -406,13 +433,19 @@
       keepBuffer: 2,
     };
 
-    const markerRenderer = L.svg({ padding: 0.75 });
+    const dotIcon = L.divIcon({
+      className: "map-dot-wrap",
+      html: '<span class="map-dot"></span>',
+      iconSize: [18, 18],
+      iconAnchor: [9, 9],
+    });
+
+    let panEndHandler = null;
 
     const map = L.map("map", {
       maxBounds: US_BOUNDS,
       maxBoundsViscosity: 0.85,
       minZoom: 3,
-      preferCanvas: true,
       fadeAnimation: false,
       zoomAnimation: !window.matchMedia("(prefers-reduced-motion: reduce)").matches,
       inertiaDeceleration: 2500,
@@ -426,10 +459,12 @@
     });
 
     const satelliteLayer = L.tileLayer(
-      "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+      "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
       {
         ...TILE_OPTIONS,
-        maxZoom: 17,
+        maxZoom: 19,
+        maxNativeZoom: 19,
+        className: "satellite-tiles",
       }
     );
 
@@ -555,19 +590,34 @@
       if (marker) {
         marker.setLatLng(latlng);
       } else {
-        marker = L.circleMarker(latlng, {
-          radius: 8,
-          fillColor: "#3d9cf5",
-          color: "#ffffff",
-          weight: 2,
-          opacity: 1,
-          fillOpacity: 0.95,
-          renderer: markerRenderer,
-          pane: "markerPane",
+        marker = L.marker(latlng, {
+          icon: dotIcon,
+          zIndexOffset: 1000,
+          interactive: false,
         }).addTo(map);
       }
 
       locationBadgeEl.classList.toggle("hidden", !isCurrentLocation);
+    }
+
+    function panToLocation(latlng, zoom, isCurrentLocation) {
+      placeMarker(latlng, isCurrentLocation);
+
+      if (zoom == null) {
+        return;
+      }
+
+      if (panEndHandler) {
+        map.off("moveend", panEndHandler);
+      }
+
+      panEndHandler = () => {
+        placeMarker(latlng, isCurrentLocation);
+        panEndHandler = null;
+      };
+
+      map.once("moveend", panEndHandler);
+      map.setView(latlng, zoom, { animate: map.options.zoomAnimation });
     }
 
     async function fetchElevation(lat, lng, signal) {
@@ -605,14 +655,11 @@
         enableLocateButton();
       }
 
-      placeMarker(latlng, isCurrentLocation);
+      panToLocation(latlng, zoomTo, isCurrentLocation);
       setCoords(lat, lng);
 
       const cached = elevationCache.get(cacheKey(lat, lng));
       if (cached != null) {
-        if (zoomTo != null) {
-          map.setView(latlng, zoomTo, { animate: map.options.zoomAnimation });
-        }
         setResult(cached, lat, lng);
         return;
       }
@@ -625,10 +672,6 @@
       const signal = activeController.signal;
 
       setLoading();
-
-      if (zoomTo != null) {
-        map.setView(latlng, zoomTo, { animate: map.options.zoomAnimation });
-      }
 
       try {
         const feet = await fetchElevation(lat, lng, signal);
