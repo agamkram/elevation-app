@@ -1,0 +1,1409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f1419" />
+  <meta
+    name="description"
+    content="Click a US map to see elevation in feet and meters. Opens at your current location."
+  />
+  <title>US Elevation Map</title>
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Elevation" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" type="image/png" href="apple-touch-icon.png" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""
+  />
+  <link rel="preconnect" href="https://api.open-meteo.com" crossorigin />
+  <link rel="preconnect" href="https://a.tile.openstreetmap.org" crossorigin />
+  <link rel="preconnect" href="https://server.arcgisonline.com" crossorigin />
+  <link rel="preconnect" href="https://epqs.nationalmap.gov" crossorigin />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap"
+    rel="stylesheet"
+  />
+  <style>
+    :root {
+      --bg: #0f1419;
+      --surface: #1a2332;
+      --surface-2: #243044;
+      --text: #e8edf4;
+      --muted: #8b9cb3;
+      --accent: #3d9cf5;
+      --feet: #4ade80;
+      --meters: #f59e0b;
+      --border: rgba(255, 255, 255, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html {
+      height: 100%;
+      max-height: 100dvh;
+      overflow: hidden;
+    }
+
+    body {
+      font-family: "DM Sans", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100dvh;
+      max-height: 100dvh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      flex-shrink: 0;
+      padding: 0.5rem 1rem;
+      padding-top: max(0.5rem, env(safe-area-inset-top));
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    header h1 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+
+    .map-attribution {
+      margin-top: 0.1rem;
+      font-size: 0.6rem;
+      color: var(--muted);
+      line-height: 1.25;
+    }
+
+    .map-attribution a {
+      color: inherit;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+
+    .map-attribution a:hover {
+      color: var(--text);
+    }
+
+    main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 220px;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    @media (max-width: 768px) {
+      main {
+        grid-template-columns: 1fr;
+        grid-template-rows: 1fr auto;
+      }
+    }
+
+    #map {
+      position: relative;
+      min-height: 0;
+      height: 100%;
+      background: #d8dde6;
+      z-index: 0;
+    }
+
+    .leaflet-container {
+      font-family: inherit;
+    }
+
+    @media (pointer: coarse) {
+      .leaflet-control-zoom {
+        display: none !important;
+      }
+    }
+
+    .map-dot-wrap {
+      background: transparent;
+      border: none;
+    }
+
+    .map-dot {
+      display: block;
+      width: 14px;
+      height: 14px;
+      background: #3d9cf5;
+      border: 2px solid #ffffff;
+      border-radius: 50%;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+    }
+
+    aside {
+      background: var(--surface);
+      border-left: 1px solid var(--border);
+      padding: 0.65rem 0.75rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.55rem;
+      overflow-y: auto;
+      min-height: 0;
+    }
+
+    @media (min-width: 1024px) and (pointer: fine) {
+      aside {
+        overflow: hidden;
+      }
+
+      .elevation-feet {
+        font-size: 1.35rem;
+      }
+    }
+
+    @media (max-width: 768px) {
+      aside {
+        flex-shrink: 0;
+        overflow: hidden;
+        padding: 0.45rem 0.65rem;
+        padding-bottom: max(0.45rem, env(safe-area-inset-bottom));
+        border-left: none;
+        border-top: 1px solid var(--border);
+      }
+    }
+
+    @media (min-width: 541px) and (max-width: 768px) {
+      aside {
+        flex-direction: column;
+      }
+    }
+
+    @media (max-width: 540px) {
+      aside {
+        flex-direction: row;
+        align-items: stretch;
+        gap: 0.35rem;
+      }
+
+      aside .elevation-display {
+        flex: 1 1 33%;
+        max-width: 33%;
+        min-width: 0;
+        padding: 0.35rem 0.38rem;
+        gap: 0.06rem;
+        overflow: hidden;
+      }
+
+      aside .elevation-feet {
+        font-size: 0.95rem;
+      }
+
+      aside .elevation-meters {
+        font-size: 0.72rem;
+        margin-top: 0.06rem;
+        padding-top: 0.1rem;
+      }
+
+      aside .elevation-status {
+        font-size: 0.68rem;
+        line-height: 1.2;
+      }
+
+      aside .elevation-status.placeholder {
+        font-size: 0.64rem;
+      }
+
+      aside .panel-label {
+        font-size: 0.5rem;
+        margin-bottom: 0.06rem;
+      }
+
+      #point-a-panel .card-header {
+        min-height: 0.95rem;
+        gap: 0.25rem;
+      }
+
+      #point-a-panel .location-badge {
+        font-size: 0.48rem;
+        padding: 0.05rem 0.28rem;
+      }
+
+      #point-a-panel .save-btn {
+        font-size: 0.48rem;
+        padding: 0.1rem 0.3rem;
+      }
+
+      aside .card-coords {
+        margin-top: 0.1rem;
+        padding-top: 0.1rem;
+        gap: 0.12rem;
+      }
+
+      aside .coord-inline {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.02rem;
+        font-size: 0.5rem;
+        line-height: 1.15;
+      }
+
+      aside .coord-inline span:last-child {
+        font-size: 0.48rem;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      aside .error {
+        font-size: 0.55rem;
+        margin-top: 0.08rem;
+      }
+
+      .diff-formula {
+        font-size: 0.36rem;
+        letter-spacing: 0;
+      }
+    }
+
+    .panel-label {
+      font-size: 0.6rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 0.2rem;
+    }
+
+    .elevation-display {
+      background: var(--surface-2);
+      border-radius: 10px;
+      padding: 0.65rem 0.75rem;
+      border: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 0.15rem;
+      min-width: 0;
+      flex-shrink: 0;
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      min-height: 1.35rem;
+    }
+
+    .card-header .location-badge {
+      margin-bottom: 0;
+    }
+
+    .save-btn {
+      border: 1px solid rgba(61, 156, 245, 0.35);
+      background: rgba(61, 156, 245, 0.12);
+      color: var(--accent);
+      font: inherit;
+      font-size: 0.625rem;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      padding: 0.2rem 0.5rem;
+      border-radius: 999px;
+      cursor: pointer;
+      transition: background 0.15s ease, opacity 0.15s ease;
+      flex-shrink: 0;
+    }
+
+    .save-btn:hover:not(:disabled) {
+      background: rgba(61, 156, 245, 0.22);
+    }
+
+    .save-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .save-btn.active {
+      background: rgba(74, 222, 128, 0.18);
+      border-color: rgba(74, 222, 128, 0.4);
+      color: var(--feet);
+    }
+
+    .card-coords {
+      display: grid;
+      gap: 0.1rem;
+      margin-top: 0.35rem;
+      padding-top: 0.35rem;
+      border-top: 1px solid var(--border);
+    }
+
+    .coord-inline {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.7rem;
+    }
+
+    .coord-inline span:first-child {
+      color: var(--muted);
+      font-weight: 500;
+    }
+
+    .coord-inline span:last-child {
+      font-variant-numeric: tabular-nums;
+      font-weight: 500;
+    }
+
+    .select-hint {
+      font-size: 0.7rem;
+      color: var(--accent);
+      font-weight: 500;
+      line-height: 1.35;
+    }
+
+    .diff-positive {
+      color: var(--feet);
+    }
+
+    .diff-negative {
+      color: #f87171;
+    }
+
+    .diff-zero {
+      color: var(--muted);
+    }
+
+    #diff-temp.temp-hot {
+      color: #f87171;
+    }
+
+    #diff-temp.temp-cold {
+      color: var(--accent);
+    }
+
+    #diff-temp.diff-zero {
+      color: var(--muted);
+    }
+
+    #diff-panel {
+      container-type: inline-size;
+    }
+
+    .diff-formula {
+      margin-top: 0.2rem;
+      padding-top: 0.25rem;
+      border-top: 1px solid var(--border);
+      margin-bottom: 0;
+      font-size: 0.5rem;
+      line-height: 1.25;
+      text-transform: none;
+      letter-spacing: 0.01em;
+      max-width: 100%;
+      min-width: 0;
+      overflow: hidden;
+      white-space: normal;
+    }
+
+    .diff-formula-part {
+      display: block;
+      max-width: 100%;
+      overflow-wrap: anywhere;
+    }
+
+    .diff-formula-part + .diff-formula-part::before {
+      content: none;
+    }
+
+    @container (min-width: 280px) {
+      .diff-formula {
+        white-space: nowrap;
+      }
+
+      .diff-formula-part {
+        display: inline;
+      }
+
+      .diff-formula-part + .diff-formula-part::before {
+        content: " · ";
+      }
+    }
+
+    .elevation-feet {
+      font-size: 1.55rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      line-height: 1.1;
+      color: var(--feet);
+    }
+
+    .elevation-meters {
+      font-size: 0.95rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      line-height: 1.2;
+      color: var(--meters);
+      padding-top: 0.2rem;
+      border-top: 1px solid var(--border);
+      margin-top: 0.15rem;
+    }
+
+    .elevation-status {
+      color: var(--muted);
+      font-size: 0.8125rem;
+      font-weight: 500;
+      line-height: 1.35;
+    }
+
+    .elevation-status.placeholder {
+      font-size: 0.75rem;
+      font-weight: 400;
+    }
+
+    .elevation-unit {
+      font-size: 0.72em;
+      font-weight: 500;
+      opacity: 0.85;
+      margin-left: 0.2rem;
+    }
+
+    .location-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      font-size: 0.625rem;
+      font-weight: 500;
+      color: var(--accent);
+      background: rgba(61, 156, 245, 0.12);
+      border: 1px solid rgba(61, 156, 245, 0.25);
+      border-radius: 999px;
+      padding: 0.12rem 0.45rem;
+      margin-bottom: 0.25rem;
+      width: fit-content;
+    }
+
+    .map-dot.saved {
+      background: #4ade80;
+    }
+
+    .error {
+      color: #f87171;
+      font-size: 0.7rem;
+      line-height: 1.35;
+      margin-top: 0.2rem;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    .map-controls {
+      position: absolute;
+      top: 0.75rem;
+      right: 0.75rem;
+      z-index: 500;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 0.5rem;
+      pointer-events: none;
+    }
+
+    .layer-toggle {
+      pointer-events: auto;
+      display: inline-flex;
+      padding: 0.2rem;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: rgba(26, 35, 50, 0.92);
+      backdrop-filter: blur(8px);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
+    }
+
+    .layer-toggle button {
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      font: inherit;
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 0.45rem 0.7rem;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.15s ease, color 0.15s ease;
+    }
+
+    .layer-toggle button.active {
+      background: rgba(61, 156, 245, 0.2);
+      color: var(--text);
+    }
+
+    .locate-btn {
+      pointer-events: auto;
+      width: 2.5rem;
+      height: 2.5rem;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: rgba(26, 35, 50, 0.92);
+      backdrop-filter: blur(8px);
+      color: var(--accent);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
+      transition: background 0.15s ease, opacity 0.15s ease;
+    }
+
+    .locate-btn:hover:not(:disabled) {
+      background: rgba(61, 156, 245, 0.14);
+    }
+
+    .locate-btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    .locate-btn svg {
+      width: 1.15rem;
+      height: 1.15rem;
+      fill: currentColor;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>US Elevation Map</h1>
+    <p class="map-attribution">
+      Map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>
+      · Satellite © <a href="https://www.esri.com/" target="_blank" rel="noopener noreferrer">Esri</a>
+    </p>
+  </header>
+
+  <main>
+    <div id="map" role="application" aria-label="Interactive map of the United States">
+      <div class="map-controls">
+        <div class="layer-toggle" role="group" aria-label="Map style">
+          <button type="button" id="layer-map-btn" class="active" aria-pressed="true">Map</button>
+          <button type="button" id="layer-sat-btn" aria-pressed="false">Satellite</button>
+        </div>
+        <button
+          type="button"
+          id="locate-btn"
+          class="locate-btn"
+          aria-label="Return to my location"
+          title="My location"
+          disabled
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm8.94 3A8.994 8.994 0 0 0 13 3.06V1h-2v2.06A8.994 8.994 0 0 0 3.06 11H1v2h2.06A8.994 8.994 0 0 0 11 20.94V23h2v-2.06A8.994 8.994 0 0 0 20.94 13H23v-2h-2.06ZM12 19a7 7 0 1 1 0-14 7 7 0 0 1 0 14Z" />
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <aside>
+      <section class="elevation-display" aria-live="polite" aria-busy="true" id="point-a-panel">
+        <div class="card-header">
+          <div id="location-badge" class="location-badge hidden">Your location</div>
+          <button type="button" id="save-btn" class="save-btn" disabled>Save</button>
+        </div>
+        <div class="panel-label">Elevation</div>
+        <div id="elevation-feet" class="elevation-status placeholder">
+          Finding your location…
+        </div>
+        <div id="elevation-meters" class="elevation-meters hidden" aria-hidden="true"></div>
+        <div class="card-coords">
+          <div class="coord-inline">
+            <span>Lat</span>
+            <span id="lat-a">—</span>
+          </div>
+          <div class="coord-inline">
+            <span>Lon</span>
+            <span id="lon-a">—</span>
+          </div>
+        </div>
+        <p id="error" class="error hidden" role="alert"></p>
+      </section>
+
+      <section class="elevation-display hidden" aria-live="polite" id="point-b-panel">
+        <div class="panel-label">Point 2</div>
+        <div id="elevation-feet-b" class="elevation-status placeholder">—</div>
+        <div id="elevation-meters-b" class="elevation-meters hidden" aria-hidden="true"></div>
+        <div class="card-coords">
+          <div class="coord-inline">
+            <span>Lat</span>
+            <span id="lat-b">—</span>
+          </div>
+          <div class="coord-inline">
+            <span>Lon</span>
+            <span id="lon-b">—</span>
+          </div>
+        </div>
+        <p id="error-b" class="error hidden" role="alert"></p>
+      </section>
+
+      <section class="elevation-display hidden" aria-live="polite" id="diff-panel">
+        <div class="panel-label">Difference</div>
+        <div id="diff-feet" class="elevation-feet">—</div>
+        <div id="diff-meters" class="elevation-meters hidden" aria-hidden="true"></div>
+        <div id="diff-temp" class="elevation-meters hidden" aria-hidden="true"></div>
+        <p class="panel-label diff-formula">
+          <span class="diff-formula-part">3.5°F/1,000 ft elevation</span>
+          <span class="diff-formula-part">3.5°F/250 mi latitude</span>
+        </p>
+      </section>
+    </aside>
+  </main>
+
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""
+  ></script>
+  <script>
+    const FEET_TO_METERS = 0.3048;
+    const METERS_TO_FEET = 3.280839895;
+    const TEMP_PER_1000_FT = 3.5;
+    const TEMP_PER_250_MI_LAT = 3.5;
+    const MILES_PER_LAT_DEGREE = 69.172;
+    const US_BOUNDS = L.latLngBounds(
+      L.latLng(18.0, -180.0),
+      L.latLng(72.0, -50.0)
+    );
+
+    const ELEVATION_CACHE_MAX = 200;
+    const elevationCache = new Map();
+    const elevationInflight = new Map();
+    let markerA = null;
+    let markerB = null;
+    let activeController = null;
+    let activeControllerB = null;
+    let requestId = 0;
+    let requestIdB = 0;
+    let userLocation = null;
+    let activeLocation = null;
+    let activeBaseLayer = null;
+    let resizeTimer = null;
+    let comparisonMode = false;
+    let savedPointA = null;
+    let savedPointB = null;
+    let currentElevationFeet = null;
+
+    const pointAPanelEl = document.getElementById("point-a-panel");
+    const feetEl = document.getElementById("elevation-feet");
+    const metersEl = document.getElementById("elevation-meters");
+    const latAEl = document.getElementById("lat-a");
+    const lonAEl = document.getElementById("lon-a");
+    const errorEl = document.getElementById("error");
+    const locationBadgeEl = document.getElementById("location-badge");
+    const saveBtn = document.getElementById("save-btn");
+    const pointBPanelEl = document.getElementById("point-b-panel");
+    const feetBEl = document.getElementById("elevation-feet-b");
+    const metersBEl = document.getElementById("elevation-meters-b");
+    const latBEl = document.getElementById("lat-b");
+    const lonBEl = document.getElementById("lon-b");
+    const errorBEl = document.getElementById("error-b");
+    const diffPanelEl = document.getElementById("diff-panel");
+    const diffFeetEl = document.getElementById("diff-feet");
+    const diffMetersEl = document.getElementById("diff-meters");
+    const diffTempEl = document.getElementById("diff-temp");
+    const layerMapBtn = document.getElementById("layer-map-btn");
+    const layerSatBtn = document.getElementById("layer-sat-btn");
+    const locateBtn = document.getElementById("locate-btn");
+    const mapEl = document.getElementById("map");
+
+    const TILE_OPTIONS = {
+      maxZoom: 18,
+      detectRetina: false,
+      updateWhenIdle: true,
+      updateWhenZooming: true,
+      keepBuffer: 2,
+      tileSize: 256,
+    };
+
+    function makeDotIcon(saved = false) {
+      return L.divIcon({
+        className: "map-dot-wrap",
+        html: `<span class="map-dot${saved ? " saved" : ""}"></span>`,
+        iconSize: [18, 18],
+        iconAnchor: [9, 9],
+      });
+    }
+
+    const dotIcon = makeDotIcon(false);
+    const savedDotIcon = makeDotIcon(true);
+
+    const isTouchPrimary = window.matchMedia("(pointer: coarse)").matches;
+
+    const map = L.map("map", {
+      maxBounds: US_BOUNDS,
+      maxBoundsViscosity: 0.85,
+      minZoom: 3,
+      zoomSnap: 1,
+      zoomDelta: 1,
+      fadeAnimation: false,
+      zoomAnimation: !window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+      inertiaDeceleration: 2500,
+      wheelDebounceTime: 40,
+      attributionControl: false,
+      zoomControl: false,
+    }).setView([39.5, -98.35], 4);
+
+    if (!isTouchPrimary) {
+      L.control.zoom({ position: "topleft" }).addTo(map);
+    }
+
+    const mapLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      ...TILE_OPTIONS,
+      subdomains: "abc",
+    });
+
+    const satelliteLayer = L.tileLayer(
+      "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+      {
+        ...TILE_OPTIONS,
+        detectRetina: true,
+        maxZoom: 19,
+        maxNativeZoom: 19,
+      }
+    );
+
+    activeBaseLayer = mapLayer;
+    mapLayer.addTo(map);
+
+    function setBaseLayer(layer, mapActive = layer === mapLayer) {
+      if (activeBaseLayer === layer) return;
+
+      const center = map.getCenter();
+      const zoom = map.getZoom();
+      const layerMaxZoom = layer.options.maxZoom ?? 18;
+
+      map.removeLayer(activeBaseLayer);
+      activeBaseLayer = layer;
+      layer.addTo(map);
+      map.setView(center, Math.min(zoom, layerMaxZoom), { animate: false });
+      mapEl.style.background = mapActive ? "#d8dde6" : "#243018";
+
+      if (savedPointA) {
+        showMarkerA(savedPointA.lat, savedPointA.lng, savedPointA.isCurrentLocation);
+      } else if (activeLocation) {
+        showMarkerA(
+          activeLocation.lat,
+          activeLocation.lng,
+          activeLocation.isCurrentLocation,
+        );
+      }
+      if (savedPointB) {
+        showMarkerB(savedPointB.lat, savedPointB.lng);
+      }
+
+      layerMapBtn.classList.toggle("active", mapActive);
+      layerSatBtn.classList.toggle("active", !mapActive);
+      layerMapBtn.setAttribute("aria-pressed", String(mapActive));
+      layerSatBtn.setAttribute("aria-pressed", String(!mapActive));
+    }
+
+    const mapControlsEl = document.querySelector(".map-controls");
+    L.DomEvent.disableClickPropagation(mapControlsEl);
+    L.DomEvent.disableScrollPropagation(mapControlsEl);
+
+    layerMapBtn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      setBaseLayer(mapLayer, true);
+    });
+    layerSatBtn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      setBaseLayer(satelliteLayer, false);
+    });
+
+    locateBtn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      clearComparison();
+      if (userLocation) {
+        queryLocation(userLocation.lat, userLocation.lng, {
+          isCurrentLocation: true,
+          zoomTo: 12,
+          animateMap: true,
+          skipComparisonReset: true,
+        });
+        return;
+      }
+      requestCurrentLocation();
+    });
+
+    window.addEventListener("resize", () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => map.invalidateSize(), 150);
+    });
+
+    function cacheKey(lat, lng) {
+      return `${lat.toFixed(4)},${lng.toFixed(4)}`;
+    }
+
+    function cacheElevation(key, feet) {
+      if (elevationCache.size >= ELEVATION_CACHE_MAX && !elevationCache.has(key)) {
+        elevationCache.delete(elevationCache.keys().next().value);
+      }
+      elevationCache.set(key, feet);
+    }
+
+    function formatCoord(value, positiveSuffix, negativeSuffix) {
+      const abs = Math.abs(value).toFixed(5);
+      return value >= 0 ? `${abs}° ${positiveSuffix}` : `${abs}° ${negativeSuffix}`;
+    }
+
+    function feetToMeters(feet) {
+      return feet * FEET_TO_METERS;
+    }
+
+    function setCoordsA(lat, lng) {
+      latAEl.textContent = formatCoord(lat, "N", "S");
+      lonAEl.textContent = formatCoord(lng, "E", "W");
+    }
+
+    function setCoordsB(lat, lng) {
+      latBEl.textContent = formatCoord(lat, "N", "S");
+      lonBEl.textContent = formatCoord(lng, "E", "W");
+    }
+
+    function setBusy(isBusy) {
+      pointAPanelEl.setAttribute("aria-busy", String(isBusy));
+    }
+
+    function clearError() {
+      errorEl.textContent = "";
+      errorEl.classList.add("hidden");
+    }
+
+    function showError(message) {
+      errorEl.textContent = message;
+      errorEl.classList.remove("hidden");
+    }
+
+    function setIdlePrompt() {
+      feetEl.className = "elevation-status placeholder";
+      feetEl.textContent = "Click the map to query";
+      metersEl.classList.add("hidden");
+      metersEl.setAttribute("aria-hidden", "true");
+      latAEl.textContent = "—";
+      lonAEl.textContent = "—";
+      currentElevationFeet = null;
+      saveBtn.disabled = true;
+      setBusy(false);
+    }
+
+    function setLoading(message = "Looking up elevation…") {
+      feetEl.className = "elevation-status";
+      feetEl.textContent = message;
+      metersEl.classList.add("hidden");
+      metersEl.setAttribute("aria-hidden", "true");
+      clearError();
+      setBusy(true);
+    }
+
+    function setLoadingB(message = "Looking up elevation…") {
+      feetBEl.className = "elevation-status";
+      feetBEl.textContent = message;
+      metersBEl.classList.add("hidden");
+      metersBEl.setAttribute("aria-hidden", "true");
+      errorBEl.classList.add("hidden");
+      pointBPanelEl.classList.remove("hidden");
+    }
+
+    function setUnavailable(message) {
+      feetEl.className = "elevation-status placeholder";
+      feetEl.textContent = "Unavailable";
+      metersEl.classList.add("hidden");
+      metersEl.setAttribute("aria-hidden", "true");
+      showError(message);
+      setBusy(false);
+    }
+
+    function renderElevation(feetEl, metersEl, feet) {
+      const roundedFeet = Math.round(feet);
+      const roundedMeters = Math.round(feetToMeters(feet));
+
+      feetEl.className = "elevation-feet";
+      feetEl.innerHTML =
+        `${roundedFeet.toLocaleString()}<span class="elevation-unit">ft</span>`;
+
+      metersEl.className = "elevation-meters";
+      metersEl.innerHTML =
+        `${roundedMeters.toLocaleString()}<span class="elevation-unit">m</span>`;
+      metersEl.classList.remove("hidden");
+      metersEl.setAttribute("aria-hidden", "false");
+    }
+
+    function setResult(feet, lat, lng, isCurrentLocation = false) {
+      currentElevationFeet = feet;
+      renderElevation(feetEl, metersEl, feet);
+      setCoordsA(lat, lng);
+      locationBadgeEl.classList.toggle("hidden", !isCurrentLocation);
+      clearError();
+      setBusy(false);
+      saveBtn.disabled = false;
+    }
+
+    function setResultB(feet, lat, lng) {
+      renderElevation(feetBEl, metersBEl, feet);
+      setCoordsB(lat, lng);
+      errorBEl.textContent = "";
+      errorBEl.classList.add("hidden");
+      pointBPanelEl.classList.remove("hidden");
+      updateDiffCard(savedPointA, { feet, lat });
+    }
+
+    function calculateTempDifference(pointA, pointB) {
+      const elevDiffFt = pointB.feet - pointA.feet;
+      const latDiffMiles = (pointB.lat - pointA.lat) * MILES_PER_LAT_DEGREE;
+      const tempFromElev = -(elevDiffFt / 1000) * TEMP_PER_1000_FT;
+      const tempFromLat = -(latDiffMiles / 250) * TEMP_PER_250_MI_LAT;
+      return {
+        total: tempFromElev + tempFromLat,
+        fromElev: tempFromElev,
+        fromLat: tempFromLat,
+      };
+    }
+
+    function formatTempDelta(value) {
+      const rounded = Math.round(value * 10) / 10;
+      const sign = rounded > 0 ? "+" : "";
+      return `${sign}${rounded.toLocaleString(undefined, {
+        minimumFractionDigits: rounded % 1 === 0 ? 0 : 1,
+        maximumFractionDigits: 1,
+      })}`;
+    }
+
+    function updateDiffCard(pointA, pointB) {
+      const diffFeet = Math.round(pointB.feet - pointA.feet);
+      const diffMeters = Math.round(feetToMeters(pointB.feet - pointA.feet));
+      const elevSign = diffFeet > 0 ? "+" : "";
+      const elevClass =
+        diffFeet > 0 ? "diff-positive" : diffFeet < 0 ? "diff-negative" : "diff-zero";
+
+      diffFeetEl.className = `elevation-feet ${elevClass}`;
+      diffFeetEl.innerHTML =
+        `${elevSign}${diffFeet.toLocaleString()}<span class="elevation-unit">ft</span>`;
+
+      diffMetersEl.className = `elevation-meters ${elevClass}`;
+      diffMetersEl.innerHTML =
+        `${elevSign}${diffMeters.toLocaleString()}<span class="elevation-unit">m</span>`;
+      diffMetersEl.classList.remove("hidden");
+      diffMetersEl.setAttribute("aria-hidden", "false");
+
+      const { total } = calculateTempDifference(pointA, pointB);
+      const tempClass =
+        total > 0 ? "temp-hot" : total < 0 ? "temp-cold" : "diff-zero";
+
+      diffTempEl.className = `elevation-meters ${tempClass}`;
+      diffTempEl.innerHTML =
+        `${formatTempDelta(total)}<span class="elevation-unit">°F</span>`;
+      diffTempEl.classList.remove("hidden");
+      diffTempEl.setAttribute("aria-hidden", "false");
+      diffPanelEl.classList.remove("hidden");
+    }
+
+    function clearComparison() {
+      comparisonMode = false;
+      savedPointA = null;
+      savedPointB = null;
+      saveBtn.classList.remove("active");
+      saveBtn.textContent = "Save";
+      pointBPanelEl.classList.add("hidden");
+      diffPanelEl.classList.add("hidden");
+      diffFeetEl.className = "elevation-feet";
+      diffFeetEl.textContent = "—";
+      diffMetersEl.classList.add("hidden");
+      diffMetersEl.setAttribute("aria-hidden", "true");
+      diffTempEl.classList.add("hidden");
+      diffTempEl.setAttribute("aria-hidden", "true");
+      feetBEl.className = "elevation-status placeholder";
+      feetBEl.textContent = "—";
+      metersBEl.classList.add("hidden");
+      errorBEl.classList.add("hidden");
+      latBEl.textContent = "—";
+      lonBEl.textContent = "—";
+      hideMarkerB();
+      if (markerA && activeLocation) {
+        markerA.setIcon(dotIcon);
+      }
+    }
+
+    function showMarkerA(lat, lng, isCurrentLocation = false) {
+      const latlng = L.latLng(lat, lng);
+      const useSavedIcon = comparisonMode || savedPointB != null;
+
+      if (markerA) {
+        markerA.setLatLng(latlng);
+        markerA.setIcon(useSavedIcon ? savedDotIcon : dotIcon);
+      } else {
+        markerA = L.marker(latlng, {
+          icon: useSavedIcon ? savedDotIcon : dotIcon,
+          zIndexOffset: 1000,
+          interactive: false,
+        }).addTo(map);
+      }
+
+      if (!comparisonMode) {
+        locationBadgeEl.classList.toggle("hidden", !isCurrentLocation);
+      }
+    }
+
+    function showMarkerB(lat, lng) {
+      const latlng = L.latLng(lat, lng);
+
+      if (markerB) {
+        markerB.setLatLng(latlng);
+      } else {
+        markerB = L.marker(latlng, {
+          icon: dotIcon,
+          zIndexOffset: 999,
+          interactive: false,
+        }).addTo(map);
+      }
+    }
+
+    function hideMarkerB() {
+      if (markerB) {
+        map.removeLayer(markerB);
+        markerB = null;
+      }
+    }
+
+    function goToMapLocation(lat, lng, zoom, isCurrentLocation, animate = true) {
+      const latlng = L.latLng(lat, lng);
+      showMarkerA(lat, lng, isCurrentLocation);
+
+      if (zoom == null) {
+        return;
+      }
+
+      map.stop();
+      map.setView(latlng, zoom, { animate });
+    }
+
+    async function fetchOpenMeteoElevation(lat, lng, signal) {
+      const url = new URL("https://api.open-meteo.com/v1/elevation");
+      url.searchParams.set("latitude", String(lat));
+      url.searchParams.set("longitude", String(lng));
+
+      const response = await fetch(url, { signal });
+      if (!response.ok) {
+        throw new Error(`Elevation service returned ${response.status}`);
+      }
+
+      const data = await response.json();
+      const meters = data.elevation?.[0];
+      if (meters == null || !Number.isFinite(meters)) {
+        throw new Error("No elevation data for this location.");
+      }
+
+      return meters * METERS_TO_FEET;
+    }
+
+    async function fetchUsgsElevation(lat, lng, signal) {
+      const url = new URL("https://epqs.nationalmap.gov/v1/json");
+      url.searchParams.set("x", String(lng));
+      url.searchParams.set("y", String(lat));
+      url.searchParams.set("units", "Feet");
+      url.searchParams.set("wkid", "4326");
+
+      const response = await fetch(url, { signal });
+      if (!response.ok) {
+        throw new Error(`Elevation service returned ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (data.value == null || Number.isNaN(data.value)) {
+        throw new Error("No elevation data for this location.");
+      }
+
+      return data.value;
+    }
+
+    async function fetchElevation(lat, lng, signal) {
+      const key = cacheKey(lat, lng);
+      if (elevationCache.has(key)) {
+        return elevationCache.get(key);
+      }
+
+      if (elevationInflight.has(key)) {
+        return elevationInflight.get(key);
+      }
+
+      const task = (async () => {
+        try {
+          const feet = await fetchOpenMeteoElevation(lat, lng, signal);
+          cacheElevation(key, feet);
+          return feet;
+        } catch (fastError) {
+          if (fastError instanceof DOMException && fastError.name === "AbortError") {
+            throw fastError;
+          }
+        }
+
+        const feet = await fetchUsgsElevation(lat, lng, signal);
+        cacheElevation(key, feet);
+        return feet;
+      })();
+
+      elevationInflight.set(key, task);
+
+      try {
+        return await task;
+      } finally {
+        if (elevationInflight.get(key) === task) {
+          elevationInflight.delete(key);
+        }
+      }
+    }
+
+    function prefetchElevation(lat, lng) {
+      const key = cacheKey(lat, lng);
+      if (elevationCache.has(key) || elevationInflight.has(key)) {
+        return;
+      }
+
+      const controller = new AbortController();
+      fetchElevation(lat, lng, controller.signal).catch(() => {});
+    }
+
+    async function queryLocation(lat, lng, options = {}) {
+      const {
+        isCurrentLocation = false,
+        zoomTo = null,
+        animateMap = true,
+        skipComparisonReset = false,
+      } = options;
+
+      if (!skipComparisonReset && !comparisonMode) {
+        clearComparison();
+      }
+
+      if (isCurrentLocation) {
+        userLocation = { lat, lng };
+        locateBtn.disabled = false;
+      }
+
+      activeLocation = { lat, lng, isCurrentLocation };
+
+      goToMapLocation(
+        lat,
+        lng,
+        zoomTo,
+        isCurrentLocation,
+        isCurrentLocation ? false : animateMap,
+      );
+
+      const cached = elevationCache.get(cacheKey(lat, lng));
+      if (cached != null) {
+        setResult(cached, lat, lng, isCurrentLocation);
+        return cached;
+      }
+
+      if (activeController) {
+        activeController.abort();
+      }
+      activeController = new AbortController();
+      const currentRequest = ++requestId;
+      const signal = activeController.signal;
+
+      setLoading();
+
+      try {
+        const feet = await fetchElevation(lat, lng, signal);
+        if (currentRequest !== requestId) {
+          return null;
+        }
+        setResult(feet, lat, lng, isCurrentLocation);
+        return feet;
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") {
+          return null;
+        }
+        if (currentRequest !== requestId) {
+          return null;
+        }
+        setUnavailable(
+          err instanceof Error
+            ? err.message
+            : "Could not fetch elevation. Try again."
+        );
+        return null;
+      }
+    }
+
+    async function queryLocationB(lat, lng, options = {}) {
+      const { zoomTo = null, animateMap = true } = options;
+
+      showMarkerB(lat, lng);
+      setCoordsB(lat, lng);
+
+      if (zoomTo != null) {
+        map.stop();
+        map.setView(L.latLng(lat, lng), zoomTo, { animate: animateMap });
+      }
+
+      const cached = elevationCache.get(cacheKey(lat, lng));
+      if (cached != null) {
+        savedPointB = { lat, lng, feet: cached };
+        setResultB(cached, lat, lng);
+        comparisonMode = false;
+        saveBtn.classList.remove("active");
+        saveBtn.textContent = "Save";
+        return;
+      }
+
+      if (activeControllerB) {
+        activeControllerB.abort();
+      }
+      activeControllerB = new AbortController();
+      const currentRequest = ++requestIdB;
+      const signal = activeControllerB.signal;
+
+      setLoadingB();
+
+      try {
+        const feet = await fetchElevation(lat, lng, signal);
+        if (currentRequest !== requestIdB) {
+          return;
+        }
+        savedPointB = { lat, lng, feet };
+        setResultB(feet, lat, lng);
+        comparisonMode = false;
+        saveBtn.classList.remove("active");
+        saveBtn.textContent = "Save";
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") {
+          return;
+        }
+        if (currentRequest !== requestIdB) {
+          return;
+        }
+        feetBEl.className = "elevation-status placeholder";
+        feetBEl.textContent = "Unavailable";
+        metersBEl.classList.add("hidden");
+        errorBEl.textContent =
+          err instanceof Error
+            ? err.message
+            : "Could not fetch elevation. Try again.";
+        errorBEl.classList.remove("hidden");
+      }
+    }
+
+    function enterComparisonMode() {
+      if (currentElevationFeet == null || activeLocation == null) {
+        return;
+      }
+
+      comparisonMode = true;
+      savedPointA = {
+        lat: activeLocation.lat,
+        lng: activeLocation.lng,
+        feet: currentElevationFeet,
+        isCurrentLocation: activeLocation.isCurrentLocation,
+      };
+
+      showMarkerA(
+        savedPointA.lat,
+        savedPointA.lng,
+        savedPointA.isCurrentLocation,
+      );
+
+      saveBtn.classList.add("active");
+      saveBtn.textContent = "Tap map";
+    }
+
+    function handleLocationFailure(message) {
+      locationBadgeEl.classList.add("hidden");
+      setIdlePrompt();
+      showError(message);
+    }
+
+    function requestCurrentLocation() {
+      if (!navigator.geolocation) {
+        handleLocationFailure(
+          "Geolocation is not supported. Click the map to pick a point."
+        );
+        return;
+      }
+
+      setLoading("Finding your location…");
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          queryLocation(latitude, longitude, {
+            isCurrentLocation: true,
+            zoomTo: 12,
+            animateMap: false,
+          });
+        },
+        (error) => {
+          const messages = {
+            1: "Location permission denied. Click the map to pick a point.",
+            2: "Location unavailable. Click the map to pick a point.",
+            3: "Location request timed out. Click the map to pick a point.",
+          };
+          handleLocationFailure(
+            messages[error.code] || "Could not determine your location."
+          );
+        },
+        {
+          enableHighAccuracy: false,
+          timeout: 10000,
+          maximumAge: 300000,
+        }
+      );
+    }
+
+    saveBtn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (comparisonMode) {
+        return;
+      }
+      if (savedPointB != null) {
+        clearComparison();
+        if (activeLocation && currentElevationFeet != null) {
+          renderElevation(feetEl, metersEl, currentElevationFeet);
+          setCoordsA(activeLocation.lat, activeLocation.lng);
+          locationBadgeEl.classList.toggle(
+            "hidden",
+            !activeLocation.isCurrentLocation,
+          );
+        }
+      }
+      enterComparisonMode();
+    });
+
+    map.on("click", (event) => {
+      const { lat, lng } = event.latlng;
+      prefetchElevation(lat, lng);
+
+      if (comparisonMode && savedPointA) {
+        queryLocationB(lat, lng);
+        return;
+      }
+
+      queryLocation(lat, lng);
+    });
+
+    map.whenReady(() => {
+      map.invalidateSize();
+      requestCurrentLocation();
+    });
+  </script>
+  <script>
+    window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
+  </script>
+  <script defer src="/_vercel/insights/script.js"></script>
+</body>
+</html>
