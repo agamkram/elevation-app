@@ -1,5 +1,5 @@
 {
-  "name": "US Elevation Map",
+  "name": "Elevation",
   "short_name": "Elevation",
   "description": "Tap the US map for elevation in feet and meters",
   "start_url": "/",

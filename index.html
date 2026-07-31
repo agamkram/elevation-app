@@ -11,15 +11,15 @@
   <!-- social-share meta (tier-a) -->
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="Mark Maga" />
-  <meta property="og:title" content="US Elevation Map" />
+  <meta property="og:title" content="Elevation" />
   <meta property="og:description" content="Tap the US map for elevation in feet and meters." />
   <meta property="og:url" content="https://elevation.markmaga.com/" />
   <meta property="og:image" content="https://elevation.markmaga.com/icon-512.png" />
   <meta name="twitter:card" content="summary" />
-  <meta name="twitter:title" content="US Elevation Map" />
+  <meta name="twitter:title" content="Elevation" />
   <meta name="twitter:description" content="Tap the US map for elevation in feet and meters." />
   <meta name="twitter:image" content="https://elevation.markmaga.com/icon-512.png" />
-  <title>US Elevation Map</title>
+  <title>Elevation</title>
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Elevation" />
@@ -39,7 +39,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
-    href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap"
+    href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Michroma&display=swap"
     rel="stylesheet"
   />
   <style>
@@ -84,12 +84,14 @@
       padding-top: max(0.5rem, env(safe-area-inset-top));
       border-bottom: 1px solid var(--border);
       background: var(--surface);
+      text-align: center;
     }
 
     header h1 {
+      font-family: "Michroma", system-ui, sans-serif;
       font-size: 0.95rem;
-      font-weight: 600;
-      letter-spacing: -0.02em;
+      font-weight: 400;
+      letter-spacing: 0.02em;
     }
 
     .map-attribution {
@@ -97,6 +99,7 @@
       font-size: 0.6rem;
       color: var(--muted);
       line-height: 1.25;
+      text-align: center;
     }
 
     .map-attribution a {
@@ -591,7 +594,7 @@
 </head>
 <body>
   <header>
-    <h1>US Elevation Map</h1>
+    <h1>Elevation</h1>
     <p class="map-attribution">
       Map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>
       · Satellite © <a href="https://www.esri.com/" target="_blank" rel="noopener noreferrer">Esri</a>
