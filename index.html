@@ -81,7 +81,8 @@
     header {
       flex-shrink: 0;
       padding: 0.5rem 1rem;
-      padding-top: max(0.5rem, env(safe-area-inset-top));
+      /* Keep map position stable: title growth reclaims this top pad instead of expanding header */
+      padding-top: max(calc(0.5rem - 6px), env(safe-area-inset-top, 0px));
       border-bottom: 1px solid var(--border);
       background: var(--surface);
       text-align: center;
@@ -89,9 +90,12 @@
 
     header h1 {
       font-family: "Michroma", system-ui, sans-serif;
-      font-size: calc(0.95rem + 4px);
+      font-size: calc(0.95rem + 6px);
       font-weight: 400;
       letter-spacing: 0.02em;
+      line-height: 1.1;
+      /* Rise into top padding so map does not drop with each size bump */
+      margin-top: 0;
     }
 
     .map-attribution {
