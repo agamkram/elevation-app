@@ -1,2 +1,4 @@
 .DS_Store
 .vercel
+.local-cert.pem
+.local-key.pem
