@@ -6,28 +6,25 @@
   <meta name="theme-color" content="#0f1419" />
   <meta
     name="description"
-    content="Click a US map to see elevation in feet and meters. Opens at your current location."
+    content="Tap a US map for elevation, pressure, distance, grade, and more. Opens at your location."
   />
-  <!-- social-share meta (tier-a) -->
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="Mark Maga" />
   <meta property="og:title" content="Elevation" />
-  <meta property="og:description" content="Tap the US map for elevation in feet and meters." />
+  <meta property="og:description" content="Tap the US map for elevation and point-to-point stats." />
   <meta property="og:url" content="https://elevation.markmaga.com/" />
   <meta property="og:image" content="https://elevation.markmaga.com/icon-512.png" />
   <meta name="twitter:card" content="summary" />
   <meta name="twitter:title" content="Elevation" />
-  <meta name="twitter:description" content="Tap the US map for elevation in feet and meters." />
+  <meta name="twitter:description" content="Tap the US map for elevation and point-to-point stats." />
   <meta name="twitter:image" content="https://elevation.markmaga.com/icon-512.png" />
   <title>Elevation</title>
+  <!-- layout-v6: save on map, no You badge -->
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Elevation" />
   <script>
-    /* iOS A2HS: lock fill height before first paint.
-       Phone: screen.height > inner → use screen.
-       iPad: screen.* often *undershoots* inner → add safe-area extra.
-       See Desktop/Bottom:full bleed.txt (Bug B). Do NOT use max-height:100dvh. */
+    /* iOS A2HS fill height — Bug B / Bottom:full bleed.txt. No max-height:100dvh. */
     (function () {
       var n = window.navigator;
       var standalone =
@@ -45,9 +42,7 @@
       var screenMin = Math.min(sw, sh);
       var fillH = ih >= iw ? Math.max(ih, screenMax) : Math.max(ih, screenMin);
       var extra = 0;
-      if (Math.min(iw, ih) >= 600 && screenMax < ih - 10) {
-        extra = 20; /* refined to real insetB once body exists */
-      }
+      if (Math.min(iw, ih) >= 600 && screenMax < ih - 10) extra = 20;
       root.style.setProperty("--pwa-fill-h", fillH + "px");
       root.style.setProperty("--pwa-extra-b", extra + "px");
     })();
@@ -76,6 +71,7 @@
       --bg: #0f1419;
       --surface: #1a2332;
       --surface-2: #243044;
+      --cell-hi: #2a3a52;
       --text: #e8edf4;
       --muted: #8b9cb3;
       --accent: #3d9cf5;
@@ -84,18 +80,8 @@
       --border: rgba(255, 255, 255, 0.08);
     }
 
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
 
-    /*
-     * Full-bleed shell. Do NOT use max-height:100dvh — undershoots on iOS PWA
-     * and creates the bottom black strip (Bug B / Bottom:full bleed.txt).
-     * Safari tabs: 100dvh / -webkit-fill-available. Home-screen PWA: locked
-     * to screen height via --pwa-fill-h (see head script + syncPwaFillHeight).
-     */
     html {
       height: 100%;
       min-height: 100%;
@@ -126,11 +112,27 @@
       max-height: none;
     }
 
+    /* PWA: shell fills screen (Bug B). Results sit on the filled bottom —
+       only home-indicator clearance, not extra empty pad (Bottom:full bleed). */
+    html.pwa-standalone main {
+      flex: 1;
+      min-height: 0;
+    }
+
+    html.pwa-standalone aside {
+      /* Drop stacked 0.5rem+inset waste; inset alone after fillH */
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+      scroll-padding-bottom: env(safe-area-inset-bottom, 0px);
+      max-height: min(62dvh, calc((var(--pwa-fill-h, 100dvh) + var(--pwa-extra-b, 0px)) * 0.58));
+    }
+
+    /* Map bottom ≠ screen bottom (results sit under map). Do NOT lift
+       Save/locate by safe-area-inset — that floats them mid-map. */
+
     header {
       flex-shrink: 0;
-      padding: 0.5rem 1rem;
-      /* Keep map position stable: title growth reclaims this top pad instead of expanding header */
-      padding-top: max(calc(0.5rem - 6px), env(safe-area-inset-top, 0px));
+      padding: 0.45rem 1rem;
+      padding-top: max(calc(0.45rem - 6px), env(safe-area-inset-top, 0px));
       border-bottom: 1px solid var(--border);
       background: var(--surface);
       text-align: center;
@@ -142,16 +144,13 @@
       font-weight: 400;
       letter-spacing: 0.02em;
       line-height: 1.1;
-      /* Rise into top padding so map does not drop with each size bump */
-      margin-top: 0;
     }
 
     .map-attribution {
-      margin-top: 0.1rem;
+      margin-top: 0.08rem;
       font-size: 0.5rem;
       color: var(--muted);
       line-height: 1.25;
-      text-align: center;
     }
 
     .map-attribution a {
@@ -160,437 +159,275 @@
       text-underline-offset: 2px;
     }
 
-    .map-attribution a:hover {
-      color: var(--text);
-    }
-
+    /* All devices: map on top, results hug content (no tall empty black band) */
     main {
       flex: 1;
-      display: grid;
-      grid-template-columns: 1fr 220px;
+      display: flex;
+      flex-direction: column;
       min-height: 0;
       overflow: hidden;
-    }
-
-    @media (max-width: 768px) {
-      main {
-        grid-template-columns: 1fr;
-        grid-template-rows: 1fr auto;
-      }
+      background: var(--surface);
     }
 
     #map {
       position: relative;
-      min-height: 0;
-      height: 100%;
+      flex: 1 1 0;
+      min-height: 8rem;
+      width: 100%;
       background: #d8dde6;
       z-index: 0;
     }
 
-    .leaflet-container {
-      font-family: inherit;
+    #map .leaflet-container {
+      width: 100%;
+      height: 100%;
     }
+
+    .leaflet-container { font-family: inherit; }
 
     @media (pointer: coarse) {
-      .leaflet-control-zoom {
-        display: none !important;
-      }
+      .leaflet-control-zoom { display: none !important; }
     }
 
-    .map-dot-wrap {
-      background: transparent;
-      border: none;
-    }
+    .map-dot-wrap { background: transparent; border: none; }
 
     .map-dot {
       display: block;
       width: 14px;
       height: 14px;
       background: #3d9cf5;
-      border: 2px solid #ffffff;
+      border: 2px solid #fff;
       border-radius: 50%;
       box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
     }
 
+    .map-dot.saved { background: #4ade80; }
+
     aside {
+      flex: 0 1 auto;
       background: var(--surface);
-      border-left: 1px solid var(--border);
-      padding: 0.65rem 0.75rem;
+      border-top: 1px solid var(--border);
+      padding: 0.32rem 0.45rem;
+      /* Safari tab: keep content above home indicator / browser chrome */
+      padding-bottom: max(0.35rem, env(safe-area-inset-bottom, 0px));
       display: flex;
       flex-direction: column;
-      gap: 0.55rem;
-      overflow-y: auto;
+      gap: 0.28rem;
+      max-height: 58dvh;
       min-height: 0;
+      overflow-x: hidden;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
+      scroll-padding-bottom: max(0.35rem, env(safe-area-inset-bottom, 0px));
     }
 
-    @media (min-width: 1024px) and (pointer: fine) {
-      aside {
-        overflow: hidden;
-      }
-
-      .elevation-feet {
-        font-size: 1.35rem;
-      }
-    }
-
-    @media (max-width: 768px) {
-      aside {
-        flex-shrink: 0;
-        overflow: hidden;
-        padding: 0.45rem 0.65rem;
-        padding-bottom: max(0.45rem, env(safe-area-inset-bottom));
-        border-left: none;
-        border-top: 1px solid var(--border);
-      }
-    }
-
-    @media (min-width: 541px) and (max-width: 768px) {
-      aside {
-        flex-direction: column;
-      }
-    }
-
-    @media (max-width: 540px) {
-      aside {
-        flex-direction: row;
-        align-items: stretch;
-        gap: 0.35rem;
-      }
-
-      aside .elevation-display {
-        flex: 1 1 33%;
-        max-width: 33%;
-        min-width: 0;
-        padding: 0.35rem 0.38rem;
-        gap: 0.06rem;
-        overflow: hidden;
-      }
-
-      aside .elevation-feet {
-        font-size: 0.95rem;
-      }
-
-      aside .elevation-meters {
-        font-size: 0.72rem;
-        margin-top: 0.06rem;
-        padding-top: 0.1rem;
-      }
-
-      aside .elevation-status {
-        font-size: 0.68rem;
-        line-height: 1.2;
-      }
-
-      aside .elevation-status.placeholder {
-        font-size: 0.64rem;
-      }
-
-      aside .panel-label {
-        font-size: 0.5rem;
-        margin-bottom: 0.06rem;
-      }
-
-      #point-a-panel .card-header {
-        min-height: 0.95rem;
-        gap: 0.25rem;
-      }
-
-      #point-a-panel .location-badge {
-        font-size: 0.48rem;
-        padding: 0.05rem 0.28rem;
-      }
-
-      #point-a-panel .save-btn {
-        font-size: 0.48rem;
-        padding: 0.1rem 0.3rem;
-      }
-
-      aside .card-coords {
-        margin-top: 0.1rem;
-        padding-top: 0.1rem;
-        gap: 0.12rem;
-      }
-
-      aside .coord-inline {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 0.02rem;
-        font-size: 0.5rem;
-        line-height: 1.15;
-      }
-
-      aside .coord-inline span:last-child {
-        font-size: 0.48rem;
-        max-width: 100%;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-
-      aside .error {
-        font-size: 0.55rem;
-        margin-top: 0.08rem;
-      }
-
-      .diff-formula {
-        font-size: 0.36rem;
-        letter-spacing: 0;
-      }
-    }
-
-    .panel-label {
-      font-size: 0.6rem;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: var(--muted);
-      margin-bottom: 0.2rem;
-    }
-
-    .elevation-display {
-      background: var(--surface-2);
-      border-radius: 10px;
-      padding: 0.65rem 0.75rem;
-      border: 1px solid var(--border);
-      display: flex;
-      flex-direction: column;
-      gap: 0.15rem;
-      min-width: 0;
-      flex-shrink: 0;
-    }
-
-    .card-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 0.5rem;
-      min-height: 1.35rem;
-    }
-
-    .card-header .location-badge {
-      margin-bottom: 0;
+    .hidden {
+      display: none !important;
     }
 
     .save-btn {
-      border: 1px solid rgba(61, 156, 245, 0.35);
-      background: rgba(61, 156, 245, 0.12);
-      color: var(--accent);
+      pointer-events: auto;
+      border: 1px solid rgba(0, 0, 0, 0.35);
+      background: rgba(15, 20, 25, 0.92);
+      backdrop-filter: blur(8px);
+      color: #7ec4ff;
       font: inherit;
-      font-size: 0.625rem;
+      font-size: 0.58rem;
       font-weight: 600;
       letter-spacing: 0.03em;
       text-transform: uppercase;
-      padding: 0.2rem 0.5rem;
-      border-radius: 999px;
+      padding: 0.28rem 0.5rem;
+      border-radius: 8px;
       cursor: pointer;
-      transition: background 0.15s ease, opacity 0.15s ease;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+    }
+
+    .save-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .save-btn.active {
+      background: rgba(8, 12, 16, 0.95);
+      border-color: rgba(74, 222, 128, 0.75);
+      color: #6ee7a0;
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
+    }
+
+    .save-hint {
+      font-size: 0.57rem;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      color: #7ec4ff;
+      line-height: 1.2;
+      padding: 0 0.1rem 0.12rem;
+      flex-shrink: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .point-row {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      border-left-width: 3px;
+      padding: 0.32rem 0.35rem;
+      min-width: 0;
       flex-shrink: 0;
     }
 
-    .save-btn:hover:not(:disabled) {
-      background: rgba(61, 156, 245, 0.22);
-    }
+    .point-row.point-a { border-left-color: var(--accent); }
+    .point-row.point-b { border-left-color: var(--feet); }
+    .point-row.point-compare { border-left-color: var(--meters); }
 
-    .save-btn:disabled {
-      opacity: 0.4;
-      cursor: not-allowed;
-    }
-
-    .save-btn.active {
-      background: rgba(74, 222, 128, 0.18);
-      border-color: rgba(74, 222, 128, 0.4);
-      color: var(--feet);
-    }
-
-    .card-coords {
+    .cell-grid {
       display: grid;
-      gap: 0.1rem;
-      margin-top: 0.35rem;
-      padding-top: 0.35rem;
-      border-top: 1px solid var(--border);
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0.22rem;
     }
 
-    .coord-inline {
+    /* Always 4×2: Difference · Distance · Grade · Bearing / ΔT · ΔP · ΔL · Hike time */
+    .cell-grid.compare {
+      grid-template-columns: repeat(4, 1fr);
+    }
+
+    .cell {
+      position: relative;
       display: flex;
+      flex-direction: column;
       justify-content: space-between;
-      align-items: center;
-      gap: 0.5rem;
-      font-size: 0.7rem;
+      gap: 0.1rem;
+      min-height: 2.55rem;
+      padding: 0.28rem 0.32rem;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: rgba(26, 35, 50, 0.9);
+      color: inherit;
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      outline: none;
     }
 
-    .coord-inline span:first-child {
-      color: var(--muted);
-      font-weight: 500;
+    .cell::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 5;
     }
 
-    .coord-inline span:last-child {
-      font-variant-numeric: tabular-nums;
-      font-weight: 500;
+    .cell.is-explain {
+      background: var(--cell-hi);
+      border-color: rgba(61, 156, 245, 0.35);
     }
 
-    .select-hint {
-      font-size: 0.7rem;
-      color: var(--accent);
-      font-weight: 500;
-      line-height: 1.35;
+    .cell.is-explain > .k,
+    .cell.is-explain > .v,
+    .cell.is-explain > .s {
+      visibility: hidden;
     }
 
-    .diff-positive {
-      color: var(--feet);
-    }
-
-    .diff-negative {
-      color: #f87171;
-    }
-
-    .diff-zero {
-      color: var(--muted);
-    }
-
-    #diff-temp.temp-hot {
-      color: #f87171;
-    }
-
-    #diff-temp.temp-cold {
-      color: var(--accent);
-    }
-
-    #diff-temp.diff-zero {
-      color: var(--muted);
-    }
-
-    #diff-panel {
-      container-type: inline-size;
-    }
-
-    .diff-formula {
-      margin-top: 0.2rem;
-      padding-top: 0.25rem;
-      border-top: 1px solid var(--border);
-      margin-bottom: 0;
+    .cell .k {
       font-size: 0.5rem;
-      line-height: 1.25;
-      text-transform: none;
-      letter-spacing: 0.01em;
-      max-width: 100%;
-      min-width: 0;
-      overflow: hidden;
-      white-space: normal;
-    }
-
-    .diff-formula-part {
-      display: block;
-      max-width: 100%;
-      overflow-wrap: anywhere;
-    }
-
-    .diff-formula-part + .diff-formula-part::before {
-      content: none;
-    }
-
-    @container (min-width: 280px) {
-      .diff-formula {
-        white-space: nowrap;
-      }
-
-      .diff-formula-part {
-        display: inline;
-      }
-
-      .diff-formula-part + .diff-formula-part::before {
-        content: " · ";
-      }
-    }
-
-    .elevation-feet {
-      font-size: 1.55rem;
-      font-weight: 700;
-      letter-spacing: -0.03em;
-      line-height: 1.1;
-      color: var(--feet);
-    }
-
-    .elevation-meters {
-      font-size: 0.95rem;
       font-weight: 600;
-      letter-spacing: -0.02em;
-      line-height: 1.2;
-      color: var(--meters);
-      padding-top: 0.2rem;
-      border-top: 1px solid var(--border);
-      margin-top: 0.15rem;
-    }
-
-    .elevation-status {
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
       color: var(--muted);
-      font-size: 0.8125rem;
+      line-height: 1.1;
+    }
+
+    .cell .v {
+      font-size: 0.82rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1.1;
+      font-variant-numeric: tabular-nums;
+      color: var(--text);
+    }
+
+    .cell .v.feet { color: var(--feet); }
+    .cell .v.meters { color: var(--meters); }
+    .cell .v.pos { color: var(--feet); }
+    .cell .v.neg { color: #f87171; }
+    .cell .v.hot { color: #f87171; }
+    .cell .v.cold { color: var(--accent); }
+    .cell .v.muted { color: var(--muted); font-weight: 500; }
+
+    .cell .s {
+      font-size: 0.5rem;
       font-weight: 500;
-      line-height: 1.35;
+      color: var(--muted);
+      line-height: 1.15;
+      font-variant-numeric: tabular-nums;
     }
 
-    .elevation-status.placeholder {
-      font-size: 0.75rem;
-      font-weight: 400;
-    }
-
-    .elevation-unit {
-      font-size: 0.72em;
-      font-weight: 500;
-      opacity: 0.85;
-      margin-left: 0.2rem;
-    }
-
-    .location-badge {
-      display: inline-flex;
+    .cell-tip {
+      display: none;
+      position: absolute;
+      inset: 0;
+      z-index: 4;
+      padding: 0.2rem 0.25rem;
+      font-size: 0.52rem;
+      font-weight: 600;
+      line-height: 1.2;
+      color: var(--text);
       align-items: center;
-      gap: 0.25rem;
-      font-size: 0.625rem;
-      font-weight: 500;
-      color: var(--accent);
-      background: rgba(61, 156, 245, 0.12);
-      border: 1px solid rgba(61, 156, 245, 0.25);
-      border-radius: 999px;
-      padding: 0.12rem 0.45rem;
-      margin-bottom: 0.25rem;
-      width: fit-content;
+      overflow: hidden;
+      pointer-events: none;
+      hyphens: auto;
+      white-space: pre-line;
     }
 
-    .map-dot.saved {
-      background: #4ade80;
+    .cell.is-explain .cell-tip { display: flex; }
+
+    .status-line {
+      font-size: 0.7rem;
+      color: var(--muted);
+      font-weight: 500;
+      padding: 0.15rem 0.1rem;
     }
 
     .error {
       color: #f87171;
-      font-size: 0.7rem;
-      line-height: 1.35;
+      font-size: 0.6rem;
+      line-height: 1.3;
       margin-top: 0.2rem;
-    }
-
-    .hidden {
-      display: none;
     }
 
     .map-controls {
       position: absolute;
-      top: 0.75rem;
-      right: 0.75rem;
       z-index: 500;
       display: flex;
       flex-direction: column;
       align-items: flex-end;
-      gap: 0.5rem;
+      gap: 0.32rem;
       pointer-events: none;
+    }
+
+    .map-controls-top {
+      top: 0.55rem;
+      right: 0.55rem;
+    }
+
+    .map-controls-bottom {
+      bottom: 0.55rem;
+      right: 0.55rem;
+      flex-direction: row;
+      align-items: center;
+      gap: 0.32rem;
     }
 
     .layer-toggle {
       pointer-events: auto;
       display: inline-flex;
-      padding: 0.2rem;
-      border-radius: 10px;
-      border: 1px solid var(--border);
-      background: rgba(26, 35, 50, 0.92);
+      padding: 0.12rem;
+      border-radius: 8px;
+      border: 1px solid rgba(0, 0, 0, 0.35);
+      background: rgba(15, 20, 25, 0.92);
       backdrop-filter: blur(8px);
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
     }
 
     .layer-toggle button {
@@ -598,12 +435,11 @@
       background: transparent;
       color: var(--muted);
       font: inherit;
-      font-size: 0.75rem;
+      font-size: 0.6rem;
       font-weight: 600;
-      padding: 0.45rem 0.7rem;
-      border-radius: 8px;
+      padding: 0.28rem 0.45rem;
+      border-radius: 6px;
       cursor: pointer;
-      transition: background 0.15s ease, color 0.15s ease;
     }
 
     .layer-toggle button.active {
@@ -613,35 +449,22 @@
 
     .locate-btn {
       pointer-events: auto;
-      width: 2.5rem;
-      height: 2.5rem;
-      border-radius: 10px;
-      border: 1px solid var(--border);
-      background: rgba(26, 35, 50, 0.92);
+      width: 1.85rem;
+      height: 1.85rem;
+      border-radius: 8px;
+      border: 1px solid rgba(0, 0, 0, 0.35);
+      background: rgba(15, 20, 25, 0.92);
       backdrop-filter: blur(8px);
-      color: var(--accent);
+      color: #7ec4ff;
       display: inline-flex;
       align-items: center;
       justify-content: center;
       cursor: pointer;
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
-      transition: background 0.15s ease, opacity 0.15s ease;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
     }
 
-    .locate-btn:hover:not(:disabled) {
-      background: rgba(61, 156, 245, 0.14);
-    }
-
-    .locate-btn:disabled {
-      opacity: 0.45;
-      cursor: not-allowed;
-    }
-
-    .locate-btn svg {
-      width: 1.15rem;
-      height: 1.15rem;
-      fill: currentColor;
-    }
+    .locate-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .locate-btn svg { width: 0.9rem; height: 0.9rem; fill: currentColor; }
   </style>
 </head>
 <body>
@@ -655,19 +478,15 @@
 
   <main>
     <div id="map" role="application" aria-label="Interactive map of the United States">
-      <div class="map-controls">
+      <div class="map-controls map-controls-top">
         <div class="layer-toggle" role="group" aria-label="Map style">
           <button type="button" id="layer-map-btn" class="active" aria-pressed="true">Map</button>
           <button type="button" id="layer-sat-btn" aria-pressed="false">Satellite</button>
         </div>
-        <button
-          type="button"
-          id="locate-btn"
-          class="locate-btn"
-          aria-label="Return to my location"
-          title="My location"
-          disabled
-        >
+      </div>
+      <div class="map-controls map-controls-bottom">
+        <button type="button" id="save-btn" class="save-btn" disabled>Save</button>
+        <button type="button" id="locate-btn" class="locate-btn" aria-label="Return to my location" title="My location" disabled>
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm8.94 3A8.994 8.994 0 0 0 13 3.06V1h-2v2.06A8.994 8.994 0 0 0 3.06 11H1v2h2.06A8.994 8.994 0 0 0 11 20.94V23h2v-2.06A8.994 8.994 0 0 0 20.94 13H23v-2h-2.06ZM12 19a7 7 0 1 1 0-14 7 7 0 0 1 0 14Z" />
           </svg>
@@ -675,57 +494,108 @@
       </div>
     </div>
 
-    <aside>
-      <section class="elevation-display" aria-live="polite" aria-busy="true" id="point-a-panel">
-        <div class="card-header">
-          <div id="location-badge" class="location-badge hidden">Your location</div>
-          <button type="button" id="save-btn" class="save-btn" disabled>Save</button>
-        </div>
-        <div class="panel-label">Elevation</div>
-        <div id="elevation-feet" class="elevation-status placeholder">
-          Finding your location…
-        </div>
-        <div id="elevation-meters" class="elevation-meters hidden" aria-hidden="true"></div>
-        <div class="card-coords">
-          <div class="coord-inline">
-            <span>Lat</span>
-            <span id="lat-a">—</span>
-          </div>
-          <div class="coord-inline">
-            <span>Lon</span>
-            <span id="lon-a">—</span>
-          </div>
-        </div>
-        <p id="error" class="error hidden" role="alert"></p>
-      </section>
+    <aside id="results">
+      <p id="status-a" class="status-line">Finding your location…</p>
+      <p id="error" class="error hidden" role="alert"></p>
+      <p class="save-hint">Save first location, then pick another. Differences populate below.</p>
 
-      <section class="elevation-display hidden" aria-live="polite" id="point-b-panel">
-        <div class="panel-label">Point 2</div>
-        <div id="elevation-feet-b" class="elevation-status placeholder">—</div>
-        <div id="elevation-meters-b" class="elevation-meters hidden" aria-hidden="true"></div>
-        <div class="card-coords">
-          <div class="coord-inline">
-            <span>Lat</span>
-            <span id="lat-b">—</span>
-          </div>
-          <div class="coord-inline">
-            <span>Lon</span>
-            <span id="lon-b">—</span>
-          </div>
+      <div class="point-row point-a hidden" id="point-a-panel" aria-label="Point A" aria-live="polite">
+        <div id="grid-a" class="cell-grid hidden">
+          <button type="button" class="cell" data-tip="elev-a" id="cell-elev-a">
+            <span class="k">A · Elev</span>
+            <span class="v feet" id="v-elev-a">—</span>
+            <span class="s" id="s-elev-a">—</span>
+          </button>
+          <button type="button" class="cell" data-tip="pressure" id="cell-p-a">
+            <span class="k">Pressure</span>
+            <span class="v" id="v-p-a">—</span>
+            <span class="s" id="s-p-a">hPa</span>
+          </button>
+          <button type="button" class="cell" data-tip="boil" id="cell-boil-a">
+            <span class="k">Boil</span>
+            <span class="v" id="v-boil-a">—</span>
+            <span class="s" id="s-boil-a">water</span>
+          </button>
+          <button type="button" class="cell" data-tip="coords-a" id="cell-coords-a">
+            <span class="k">Coordinates</span>
+            <span class="v" id="v-lat-a" style="font-size:0.62rem">—</span>
+            <span class="s" id="v-lon-a">—</span>
+          </button>
         </div>
-        <p id="error-b" class="error hidden" role="alert"></p>
-      </section>
+      </div>
 
-      <section class="elevation-display hidden" aria-live="polite" id="diff-panel">
-        <div class="panel-label">Difference</div>
-        <div id="diff-feet" class="elevation-feet">—</div>
-        <div id="diff-meters" class="elevation-meters hidden" aria-hidden="true"></div>
-        <div id="diff-temp" class="elevation-meters hidden" aria-hidden="true"></div>
-        <p class="panel-label diff-formula">
-          <span class="diff-formula-part">3.5°F/1,000 ft elevation</span>
-          <span class="diff-formula-part">3.5°F/250 mi latitude</span>
-        </p>
-      </section>
+      <p id="status-b" class="status-line hidden">Looking up…</p>
+      <p id="error-b" class="error hidden" role="alert"></p>
+
+      <div class="point-row point-b hidden" id="point-b-panel" aria-label="Point B" aria-live="polite">
+        <div id="grid-b" class="cell-grid">
+          <button type="button" class="cell" data-tip="elev-b">
+            <span class="k">B · Elev</span>
+            <span class="v feet" id="v-elev-b">—</span>
+            <span class="s" id="s-elev-b">—</span>
+          </button>
+          <button type="button" class="cell" data-tip="pressure">
+            <span class="k">Pressure</span>
+            <span class="v" id="v-p-b">—</span>
+            <span class="s">hPa</span>
+          </button>
+          <button type="button" class="cell" data-tip="boil">
+            <span class="k">Boil</span>
+            <span class="v" id="v-boil-b">—</span>
+            <span class="s">water</span>
+          </button>
+          <button type="button" class="cell" data-tip="coords-b">
+            <span class="k">Coordinates</span>
+            <span class="v" id="v-lat-b" style="font-size:0.62rem">—</span>
+            <span class="s" id="v-lon-b">—</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="point-row point-compare hidden" id="diff-panel" aria-label="Compare A to B" aria-live="polite">
+        <div class="cell-grid compare">
+          <button type="button" class="cell" data-tip="rise">
+            <span class="k">Difference</span>
+            <span class="v" id="v-rise">—</span>
+            <span class="s" id="s-rise">vert</span>
+          </button>
+          <button type="button" class="cell" data-tip="dist">
+            <span class="k">Distance</span>
+            <span class="v" id="v-dist">—</span>
+            <span class="s" id="s-dist">crow-flies</span>
+          </button>
+          <button type="button" class="cell" data-tip="grade">
+            <span class="k">Grade</span>
+            <span class="v" id="v-grade">—</span>
+            <span class="s" id="s-grade">—</span>
+          </button>
+          <button type="button" class="cell" data-tip="bearing">
+            <span class="k">Bearing</span>
+            <span class="v" id="v-bearing">—</span>
+            <span class="s" id="s-bearing">A→B</span>
+          </button>
+          <button type="button" class="cell" data-tip="dtemp">
+            <span class="k">ΔT</span>
+            <span class="v" id="v-dtemp">—</span>
+            <span class="s">est.</span>
+          </button>
+          <button type="button" class="cell" data-tip="dpress">
+            <span class="k">ΔP</span>
+            <span class="v" id="v-dpress">—</span>
+            <span class="s">hPa</span>
+          </button>
+          <button type="button" class="cell" data-tip="dlat">
+            <span class="k">ΔL</span>
+            <span class="v" id="v-dlat">—</span>
+            <span class="s" id="s-dlat">N/S</span>
+          </button>
+          <button type="button" class="cell" data-tip="hike">
+            <span class="k">Hike time</span>
+            <span class="v" id="v-hike">—</span>
+            <span class="s">Naismith</span>
+          </button>
+        </div>
+      </div>
     </aside>
   </main>
 
@@ -740,12 +610,27 @@
     const TEMP_PER_1000_FT = 3.5;
     const TEMP_PER_250_MI_LAT = 3.5;
     const MILES_PER_LAT_DEGREE = 69.172;
-    const US_BOUNDS = L.latLngBounds(
-      L.latLng(18.0, -180.0),
-      L.latLng(72.0, -50.0)
-    );
-
+    const EARTH_RADIUS_MI = 3958.7613;
+    const US_BOUNDS = L.latLngBounds(L.latLng(18.0, -180.0), L.latLng(72.0, -50.0));
     const ELEVATION_CACHE_MAX = 200;
+
+    const CELL_TIPS = {
+      "elev-a": "Ground elevation at the blue map pin.",
+      "elev-b": "Ground elevation at the green map pin.",
+      pressure: "Estimated air pressure from elevation.",
+      boil: "Approx. boiling point of water at this pressure / elevation.",
+      "coords-a": "Latitude and longitude of the blue map pin.",
+      "coords-b": "Latitude and longitude of the green map pin.",
+      rise: "Elevation change from blue pin to green pin.",
+      dist: "Straight line distance between pins.",
+      grade: "Steepness: vertical rise divided by horizontal distance.",
+      bearing: "Compass direction from blue pin toward green pin.",
+      dtemp: "Air temp change,\n3.5°F/1,000 elev,\n3.5°F/250 mi lat.",
+      dpress: "Pressure change from blue pin to green pin.",
+      dlat: "North–south miles from blue pin to green pin.",
+      hike: "Naismith: 1 hr per 3 mi + 1 hr per 2,000 ft ascent.",
+    };
+
     const elevationCache = new Map();
     const elevationInflight = new Map();
     let markerA = null;
@@ -762,25 +647,21 @@
     let savedPointA = null;
     let savedPointB = null;
     let currentElevationFeet = null;
+    let lastPwaFillKey = "";
+    let lastMapBox = { w: 0, h: 0 };
+    let layoutRaf = 0;
+    let layoutTrailTimer = null;
+    let bootQuietUntil = performance.now() + 600;
 
+    const statusAEl = document.getElementById("status-a");
+    const gridAEl = document.getElementById("grid-a");
     const pointAPanelEl = document.getElementById("point-a-panel");
-    const feetEl = document.getElementById("elevation-feet");
-    const metersEl = document.getElementById("elevation-meters");
-    const latAEl = document.getElementById("lat-a");
-    const lonAEl = document.getElementById("lon-a");
     const errorEl = document.getElementById("error");
-    const locationBadgeEl = document.getElementById("location-badge");
     const saveBtn = document.getElementById("save-btn");
     const pointBPanelEl = document.getElementById("point-b-panel");
-    const feetBEl = document.getElementById("elevation-feet-b");
-    const metersBEl = document.getElementById("elevation-meters-b");
-    const latBEl = document.getElementById("lat-b");
-    const lonBEl = document.getElementById("lon-b");
+    const statusBEl = document.getElementById("status-b");
     const errorBEl = document.getElementById("error-b");
     const diffPanelEl = document.getElementById("diff-panel");
-    const diffFeetEl = document.getElementById("diff-feet");
-    const diffMetersEl = document.getElementById("diff-meters");
-    const diffTempEl = document.getElementById("diff-temp");
     const layerMapBtn = document.getElementById("layer-map-btn");
     const layerSatBtn = document.getElementById("layer-sat-btn");
     const locateBtn = document.getElementById("locate-btn");
@@ -804,9 +685,8 @@
       });
     }
 
-    const dotIcon = makeDotIcon(false);
-    const savedDotIcon = makeDotIcon(true);
-
+    const dotIcon = makeDotIcon(false); // blue — A / current
+    const pointBIcon = makeDotIcon(true); // green — B only
     const isTouchPrimary = window.matchMedia("(pointer: coarse)").matches;
 
     const map = L.map("map", {
@@ -834,12 +714,7 @@
 
     const satelliteLayer = L.tileLayer(
       "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-      {
-        ...TILE_OPTIONS,
-        detectRetina: true,
-        maxZoom: 19,
-        maxNativeZoom: 19,
-      }
+      { ...TILE_OPTIONS, detectRetina: true, maxZoom: 19, maxNativeZoom: 19 }
     );
 
     activeBaseLayer = mapLayer;
@@ -847,51 +722,42 @@
 
     function setBaseLayer(layer, mapActive = layer === mapLayer) {
       if (activeBaseLayer === layer) return;
-
       const center = map.getCenter();
       const zoom = map.getZoom();
       const layerMaxZoom = layer.options.maxZoom ?? 18;
-
       map.removeLayer(activeBaseLayer);
       activeBaseLayer = layer;
       layer.addTo(map);
       map.setView(center, Math.min(zoom, layerMaxZoom), { animate: false });
       mapEl.style.background = mapActive ? "#d8dde6" : "#243018";
-
-      if (savedPointA) {
-        showMarkerA(savedPointA.lat, savedPointA.lng, savedPointA.isCurrentLocation);
-      } else if (activeLocation) {
-        showMarkerA(
-          activeLocation.lat,
-          activeLocation.lng,
-          activeLocation.isCurrentLocation,
-        );
+      refreshMapAfterResultsChange();
+      if (savedPointA) showMarkerA(savedPointA.lat, savedPointA.lng, savedPointA.isCurrentLocation);
+      else if (activeLocation) {
+        showMarkerA(activeLocation.lat, activeLocation.lng, activeLocation.isCurrentLocation);
       }
-      if (savedPointB) {
-        showMarkerB(savedPointB.lat, savedPointB.lng);
-      }
-
+      if (savedPointB) showMarkerB(savedPointB.lat, savedPointB.lng);
       layerMapBtn.classList.toggle("active", mapActive);
       layerSatBtn.classList.toggle("active", !mapActive);
       layerMapBtn.setAttribute("aria-pressed", String(mapActive));
       layerSatBtn.setAttribute("aria-pressed", String(!mapActive));
     }
 
-    const mapControlsEl = document.querySelector(".map-controls");
-    L.DomEvent.disableClickPropagation(mapControlsEl);
-    L.DomEvent.disableScrollPropagation(mapControlsEl);
+    document.querySelectorAll(".map-controls").forEach((el) => {
+      L.DomEvent.disableClickPropagation(el);
+      L.DomEvent.disableScrollPropagation(el);
+    });
 
-    layerMapBtn.addEventListener("click", (event) => {
-      event.stopPropagation();
+    layerMapBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
       setBaseLayer(mapLayer, true);
     });
-    layerSatBtn.addEventListener("click", (event) => {
-      event.stopPropagation();
+    layerSatBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
       setBaseLayer(satelliteLayer, false);
     });
 
-    locateBtn.addEventListener("click", (event) => {
-      event.stopPropagation();
+    locateBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
       clearComparison();
       if (userLocation) {
         queryLocation(userLocation.lat, userLocation.lng, {
@@ -905,12 +771,7 @@
       requestCurrentLocation();
     });
 
-    let lastPwaFillKey = "";
-    let lastMapBox = { w: 0, h: 0 };
-    let layoutRaf = 0;
-    let layoutTrailTimer = null;
-    let bootQuietUntil = performance.now() + 600;
-
+    /* —— PWA layout (Bug B) —— */
     function readSafeInsetBottom() {
       const probe = document.createElement("div");
       probe.style.cssText =
@@ -926,12 +787,10 @@
       const ih = window.innerHeight || 0;
       const sw = window.screen.width || 0;
       const sh = window.screen.height || 0;
-      // iOS keeps screen.* in portrait metrics; pick the axis for current height.
       if (ih >= iw) return Math.max(ih, Math.max(sw, sh));
       return Math.max(ih, Math.min(sw, sh));
     }
 
-    /** iPad PWA: screen.* undershoots CSS inner — phone uses screen height instead. */
     function pwaExtraBottomPx() {
       const iw = window.innerWidth || 0;
       const ih = window.innerHeight || 0;
@@ -943,7 +802,6 @@
       return Math.max(readSafeInsetBottom(), 20);
     }
 
-    /** Returns true when CSS vars actually changed (avoid no-op reflow). */
     function syncPwaFillHeight() {
       const root = document.documentElement;
       if (!root.classList.contains("pwa-standalone")) {
@@ -959,33 +817,35 @@
       const extra = pwaExtraBottomPx();
       const key = `${fillH}|${extra}`;
       if (key === lastPwaFillKey) return false;
-      // Head script already set vars — keep first paint stable; only adopt
-      // later values if they differ by more than 1px (subpixel noise).
       if (lastPwaFillKey === "") {
         lastPwaFillKey = key;
         root.style.setProperty("--pwa-fill-h", `${fillH}px`);
         root.style.setProperty("--pwa-extra-b", `${extra}px`);
-        return false; // initial lock — no extra invalidate from this alone
-      }
-      const [prevH, prevE] = lastPwaFillKey.split("|").map(Number);
-      if (Math.abs(prevH - fillH) < 1.5 && Math.abs(prevE - extra) < 1.5) {
         return false;
       }
+      const [prevH, prevE] = lastPwaFillKey.split("|").map(Number);
+      if (Math.abs(prevH - fillH) < 1.5 && Math.abs(prevE - extra) < 1.5) return false;
       lastPwaFillKey = key;
       root.style.setProperty("--pwa-fill-h", `${fillH}px`);
       root.style.setProperty("--pwa-extra-b", `${extra}px`);
       return true;
     }
 
+    function redrawBaseTiles() {
+      if (activeBaseLayer && typeof activeBaseLayer.redraw === "function") {
+        activeBaseLayer.redraw();
+      }
+    }
+
     function invalidateMapIfNeeded(force = false) {
       const el = map.getContainer();
       const w = el.clientWidth;
       const h = el.clientHeight;
-      if (!force && w === lastMapBox.w && h === lastMapBox.h && w > 0 && h > 0) {
-        return false;
-      }
+      if (!force && w === lastMapBox.w && h === lastMapBox.h && w > 0 && h > 0) return false;
       lastMapBox = { w, h };
       map.invalidateSize({ animate: false, pan: false });
+      // Gray patches after panel open/close: size settled but tiles not refilled
+      redrawBaseTiles();
       return true;
     }
 
@@ -994,45 +854,47 @@
       invalidateMapIfNeeded(force || heightChanged);
     }
 
-    /** Coalesce resize / visualViewport noise into one paint + one short trailing check. */
+    /** Results A/B/compare change map height — always reflow + refill tiles. */
+    function refreshMapAfterResultsChange() {
+      requestAnimationFrame(() => {
+        applyLayout(true);
+        requestAnimationFrame(() => {
+          applyLayout(true);
+          setTimeout(() => applyLayout(true), 80);
+        });
+      });
+    }
+
     function onViewportLayout(options = {}) {
       const { orientation = false } = options;
       cancelAnimationFrame(layoutRaf);
       clearTimeout(resizeTimer);
       clearTimeout(layoutTrailTimer);
-
-      // During boot, viewport events fire a lot — batch to one trailing pass
-      // so the shell doesn't jump/repaint mid-open.
       if (!orientation && performance.now() < bootQuietUntil) {
-        clearTimeout(layoutTrailTimer);
-        layoutTrailTimer = setTimeout(() => {
-          applyLayout(false);
-        }, Math.max(0, bootQuietUntil - performance.now()));
+        layoutTrailTimer = setTimeout(() => applyLayout(false), Math.max(0, bootQuietUntil - performance.now()));
         return;
       }
-
       layoutRaf = requestAnimationFrame(() => {
         applyLayout(false);
-        // Single trailing settle (iOS can report height late after rotate)
         resizeTimer = setTimeout(() => applyLayout(false), orientation ? 280 : 120);
       });
     }
 
     window.addEventListener("resize", () => onViewportLayout());
     window.addEventListener("orientationchange", () => {
-      bootQuietUntil = 0; // allow immediate layout after rotate
+      bootQuietUntil = 0;
       setTimeout(() => onViewportLayout({ orientation: true }), 50);
       setTimeout(() => applyLayout(true), 320);
     });
     window.visualViewport?.addEventListener("resize", () => onViewportLayout());
     window.addEventListener("pageshow", (event) => {
-      // Only bfcache restore — initial load is handled by whenReady
       if (event.persisted) {
         bootQuietUntil = 0;
         onViewportLayout();
       }
     });
 
+    /* —— Math helpers —— */
     function cacheKey(lat, lng) {
       return `${lat.toFixed(4)},${lng.toFixed(4)}`;
     }
@@ -1044,29 +906,76 @@
       elevationCache.set(key, feet);
     }
 
-    function formatCoord(value, positiveSuffix, negativeSuffix) {
-      const abs = Math.abs(value).toFixed(5);
-      return value >= 0 ? `${abs}° ${positiveSuffix}` : `${abs}° ${negativeSuffix}`;
+    function formatCoord(value, pos, neg) {
+      const abs = Math.abs(value).toFixed(4);
+      return value >= 0 ? `${abs}°${pos}` : `${abs}°${neg}`;
     }
 
-    function feetToMeters(feet) {
-      return feet * FEET_TO_METERS;
+    function pressureHpa(feet) {
+      const h = feet * FEET_TO_METERS;
+      return 1013.25 * Math.pow(Math.max(1 - 2.25577e-5 * h, 0.001), 5.25588);
     }
 
-    function setCoordsA(lat, lng) {
-      latAEl.textContent = formatCoord(lat, "N", "S");
-      lonAEl.textContent = formatCoord(lng, "E", "W");
+    function boilingFFromHpa(hpa) {
+      const tC = 100 * Math.pow(hpa / 1013.25, 0.268);
+      return tC * (9 / 5) + 32;
     }
 
-    function setCoordsB(lat, lng) {
-      latBEl.textContent = formatCoord(lat, "N", "S");
-      lonBEl.textContent = formatCoord(lng, "E", "W");
+    function haversineMi(lat1, lon1, lat2, lon2) {
+      const toR = Math.PI / 180;
+      const dLat = (lat2 - lat1) * toR;
+      const dLon = (lon2 - lon1) * toR;
+      const a =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(lat1 * toR) * Math.cos(lat2 * toR) * Math.sin(dLon / 2) ** 2;
+      return 2 * EARTH_RADIUS_MI * Math.asin(Math.min(1, Math.sqrt(a)));
     }
 
-    function setBusy(isBusy) {
-      pointAPanelEl.setAttribute("aria-busy", String(isBusy));
+    function bearingDeg(lat1, lon1, lat2, lon2) {
+      const toR = Math.PI / 180;
+      const φ1 = lat1 * toR;
+      const φ2 = lat2 * toR;
+      const Δλ = (lon2 - lon1) * toR;
+      const y = Math.sin(Δλ) * Math.cos(φ2);
+      const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+      return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
     }
 
+    function bearingLabel(deg) {
+      const dirs = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
+      return dirs[Math.round(deg / 22.5) % 16];
+    }
+
+    function formatDist(mi) {
+      if (mi < 0.1) return `${Math.round(mi * 5280)} ft`;
+      if (mi < 10) return `${mi.toFixed(2)} mi`;
+      return `${mi.toFixed(1)} mi`;
+    }
+
+    function formatHike(hours) {
+      if (!Number.isFinite(hours) || hours <= 0) return "<1 min";
+      const totalMin = Math.round(hours * 60);
+      if (totalMin < 60) return `${totalMin} min`;
+      const h = Math.floor(totalMin / 60);
+      const m = totalMin % 60;
+      return m ? `${h}h ${m}m` : `${h}h`;
+    }
+
+    function formatSigned(n, unit, digits = 0) {
+      const v = digits ? n.toFixed(digits) : Math.round(n);
+      const s = n > 0 ? "+" : "";
+      return `${s}${Number(v).toLocaleString()}${unit ? " " + unit : ""}`;
+    }
+
+    function calculateTempDifference(pointA, pointB) {
+      const elevDiffFt = pointB.feet - pointA.feet;
+      const latDiffMiles = (pointB.lat - pointA.lat) * MILES_PER_LAT_DEGREE;
+      const tempFromElev = -(elevDiffFt / 1000) * TEMP_PER_1000_FT;
+      const tempFromLat = -(latDiffMiles / 250) * TEMP_PER_250_MI_LAT;
+      return tempFromElev + tempFromLat;
+    }
+
+    /* —— UI state —— */
     function clearError() {
       errorEl.textContent = "";
       errorEl.classList.add("hidden");
@@ -1078,182 +987,235 @@
     }
 
     function setIdlePrompt() {
-      feetEl.className = "elevation-status placeholder";
-      feetEl.textContent = "Click the map to query";
-      metersEl.classList.add("hidden");
-      metersEl.setAttribute("aria-hidden", "true");
-      latAEl.textContent = "—";
-      lonAEl.textContent = "—";
+      statusAEl.textContent = "Tap the map to query";
+      statusAEl.classList.remove("hidden");
+      gridAEl.classList.add("hidden");
+      pointAPanelEl.classList.add("hidden");
       currentElevationFeet = null;
       saveBtn.disabled = true;
-      setBusy(false);
+      refreshMapAfterResultsChange();
     }
 
-    function setLoading(message = "Looking up elevation…") {
-      feetEl.className = "elevation-status";
-      feetEl.textContent = message;
-      metersEl.classList.add("hidden");
-      metersEl.setAttribute("aria-hidden", "true");
+    function setPointCellsLoading(prefix, lat, lng) {
+      document.getElementById(`v-elev-${prefix}`).textContent = "…";
+      document.getElementById(`s-elev-${prefix}`).textContent = "loading";
+      document.getElementById(`v-p-${prefix}`).textContent = "…";
+      document.getElementById(`v-boil-${prefix}`).textContent = "…";
+      if (lat != null && lng != null) {
+        document.getElementById(`v-lat-${prefix}`).textContent =
+          formatCoord(lat, "N", "S");
+        document.getElementById(`v-lon-${prefix}`).textContent =
+          formatCoord(lng, "E", "W");
+      }
+    }
+
+    /** Keep card open with placeholders — hide grid = layout jump. */
+    function setLoading(message = "Looking up elevation…", lat, lng) {
       clearError();
-      setBusy(true);
+      statusAEl.classList.add("hidden");
+      pointAPanelEl.classList.remove("hidden");
+      gridAEl.classList.remove("hidden");
+      setPointCellsLoading("a", lat, lng);
+      // Only reflow if panel was closed (first open)
+      if (pointAPanelEl.dataset.wasHidden === "1") {
+        pointAPanelEl.dataset.wasHidden = "0";
+        refreshMapAfterResultsChange();
+      }
     }
 
-    function setLoadingB(message = "Looking up elevation…") {
-      feetBEl.className = "elevation-status";
-      feetBEl.textContent = message;
-      metersBEl.classList.add("hidden");
-      metersBEl.setAttribute("aria-hidden", "true");
+    function setLoadingB(lat, lng) {
+      statusBEl.classList.add("hidden");
       errorBEl.classList.add("hidden");
+      const firstB = pointBPanelEl.classList.contains("hidden");
       pointBPanelEl.classList.remove("hidden");
+      setPointCellsLoading("b", lat, lng);
+      if (firstB) refreshMapAfterResultsChange();
     }
 
-    function setUnavailable(message) {
-      feetEl.className = "elevation-status placeholder";
-      feetEl.textContent = "Unavailable";
-      metersEl.classList.add("hidden");
-      metersEl.setAttribute("aria-hidden", "true");
-      showError(message);
-      setBusy(false);
-    }
-
-    function renderElevation(feetEl, metersEl, feet) {
-      const roundedFeet = Math.round(feet);
-      const roundedMeters = Math.round(feetToMeters(feet));
-
-      feetEl.className = "elevation-feet";
-      feetEl.innerHTML =
-        `${roundedFeet.toLocaleString()}<span class="elevation-unit">ft</span>`;
-
-      metersEl.className = "elevation-meters";
-      metersEl.innerHTML =
-        `${roundedMeters.toLocaleString()}<span class="elevation-unit">m</span>`;
-      metersEl.classList.remove("hidden");
-      metersEl.setAttribute("aria-hidden", "false");
+    function fillPointCells(prefix, feet, lat, lng) {
+      const m = Math.round(feet * FEET_TO_METERS);
+      const p = pressureHpa(feet);
+      const boil = boilingFFromHpa(p);
+      document.getElementById(`v-elev-${prefix}`).textContent =
+        `${Math.round(feet).toLocaleString()} ft`;
+      document.getElementById(`s-elev-${prefix}`).textContent =
+        `${m.toLocaleString()} m`;
+      document.getElementById(`v-p-${prefix}`).textContent =
+        `${Math.round(p)} hPa`;
+      document.getElementById(`v-boil-${prefix}`).textContent =
+        `${Math.round(boil)}°F`;
+      document.getElementById(`v-lat-${prefix}`).textContent =
+        formatCoord(lat, "N", "S");
+      document.getElementById(`v-lon-${prefix}`).textContent =
+        formatCoord(lng, "E", "W");
     }
 
     function setResult(feet, lat, lng, isCurrentLocation = false) {
       currentElevationFeet = feet;
-      renderElevation(feetEl, metersEl, feet);
-      setCoordsA(lat, lng);
-      locationBadgeEl.classList.toggle("hidden", !isCurrentLocation);
+      statusAEl.classList.add("hidden");
+      pointAPanelEl.classList.remove("hidden");
+      gridAEl.classList.remove("hidden");
+      pointAPanelEl.dataset.wasHidden = "0";
+      fillPointCells("a", feet, lat, lng);
       clearError();
-      setBusy(false);
       saveBtn.disabled = false;
+      // Values-only update — no map reflow (avoids gray tiles + jump)
     }
 
     function setResultB(feet, lat, lng) {
-      renderElevation(feetBEl, metersBEl, feet);
-      setCoordsB(lat, lng);
-      errorBEl.textContent = "";
+      statusBEl.classList.add("hidden");
+      fillPointCells("b", feet, lat, lng);
       errorBEl.classList.add("hidden");
       pointBPanelEl.classList.remove("hidden");
-      updateDiffCard(savedPointA, { feet, lat });
+      updateCompare(savedPointA, { feet, lat, lng });
     }
 
-    function calculateTempDifference(pointA, pointB) {
-      const elevDiffFt = pointB.feet - pointA.feet;
-      const latDiffMiles = (pointB.lat - pointA.lat) * MILES_PER_LAT_DEGREE;
-      const tempFromElev = -(elevDiffFt / 1000) * TEMP_PER_1000_FT;
-      const tempFromLat = -(latDiffMiles / 250) * TEMP_PER_250_MI_LAT;
-      return {
-        total: tempFromElev + tempFromLat,
-        fromElev: tempFromElev,
-        fromLat: tempFromLat,
-      };
-    }
+    function updateCompare(pointA, pointB) {
+      if (!pointA || !pointB) return;
+      const distMi = haversineMi(pointA.lat, pointA.lng, pointB.lat, pointB.lng);
+      const riseFt = pointB.feet - pointA.feet;
+      const distFt = distMi * 5280;
+      const gradePct = distFt > 1 ? (riseFt / distFt) * 100 : 0;
+      const gradeDeg = distFt > 1 ? (Math.atan(riseFt / distFt) * 180) / Math.PI : 0;
+      const brg = bearingDeg(pointA.lat, pointA.lng, pointB.lat, pointB.lng);
+      const ascent = Math.max(0, riseFt);
+      const hikeH = distMi / 3 + ascent / 2000;
+      const dT = calculateTempDifference(pointA, pointB);
+      const pA = pressureHpa(pointA.feet);
+      const pB = pressureHpa(pointB.feet);
+      const dP = pB - pA;
+      const latMi = (pointB.lat - pointA.lat) * MILES_PER_LAT_DEGREE;
 
-    function formatTempDelta(value) {
-      const rounded = Math.round(value * 10) / 10;
-      const sign = rounded > 0 ? "+" : "";
-      return `${sign}${rounded.toLocaleString(undefined, {
-        minimumFractionDigits: rounded % 1 === 0 ? 0 : 1,
-        maximumFractionDigits: 1,
-      })}`;
-    }
+      const riseEl = document.getElementById("v-rise");
+      riseEl.textContent = formatSigned(riseFt, "ft");
+      riseEl.className = `v ${riseFt > 0 ? "pos" : riseFt < 0 ? "neg" : "muted"}`;
+      document.getElementById("s-rise").textContent =
+        `${formatSigned(riseFt * FEET_TO_METERS, "m")}`;
 
-    function updateDiffCard(pointA, pointB) {
-      const diffFeet = Math.round(pointB.feet - pointA.feet);
-      const diffMeters = Math.round(feetToMeters(pointB.feet - pointA.feet));
-      const elevSign = diffFeet > 0 ? "+" : "";
-      const elevClass =
-        diffFeet > 0 ? "diff-positive" : diffFeet < 0 ? "diff-negative" : "diff-zero";
+      const distEl = document.getElementById("v-dist");
+      distEl.textContent = formatDist(distMi);
+      distEl.className = "v";
+      document.getElementById("s-dist").textContent =
+        distMi < 0.1 ? "crow-flies" : `${(distMi * 1.60934).toFixed(distMi < 10 ? 2 : 1)} km`;
 
-      diffFeetEl.className = `elevation-feet ${elevClass}`;
-      diffFeetEl.innerHTML =
-        `${elevSign}${diffFeet.toLocaleString()}<span class="elevation-unit">ft</span>`;
+      document.getElementById("v-grade").textContent =
+        `${gradePct >= 0 ? "+" : ""}${gradePct.toFixed(1)}%`;
+      document.getElementById("v-grade").className =
+        `v ${gradePct > 0 ? "pos" : gradePct < 0 ? "neg" : "muted"}`;
+      document.getElementById("s-grade").textContent = `${gradeDeg.toFixed(1)}°`;
 
-      diffMetersEl.className = `elevation-meters ${elevClass}`;
-      diffMetersEl.innerHTML =
-        `${elevSign}${diffMeters.toLocaleString()}<span class="elevation-unit">m</span>`;
-      diffMetersEl.classList.remove("hidden");
-      diffMetersEl.setAttribute("aria-hidden", "false");
+      document.getElementById("v-bearing").textContent = `${Math.round(brg)}°`;
+      document.getElementById("s-bearing").textContent = bearingLabel(brg);
 
-      const { total } = calculateTempDifference(pointA, pointB);
-      const tempClass =
-        total > 0 ? "temp-hot" : total < 0 ? "temp-cold" : "diff-zero";
+      const dTEl = document.getElementById("v-dtemp");
+      const dTRound = Math.round(dT * 10) / 10;
+      dTEl.textContent = `${dTRound > 0 ? "+" : ""}${dTRound.toFixed(dTRound % 1 ? 1 : 0)}°F`;
+      dTEl.className = `v ${dT > 0 ? "hot" : dT < 0 ? "cold" : "muted"}`;
 
-      diffTempEl.className = `elevation-meters ${tempClass}`;
-      diffTempEl.innerHTML =
-        `${formatTempDelta(total)}<span class="elevation-unit">°F</span>`;
-      diffTempEl.classList.remove("hidden");
-      diffTempEl.setAttribute("aria-hidden", "false");
+      const dPEl = document.getElementById("v-dpress");
+      dPEl.textContent = formatSigned(dP, "hPa");
+      dPEl.className = `v ${dP > 0 ? "pos" : dP < 0 ? "neg" : "muted"}`;
+
+      const dLatEl = document.getElementById("v-dlat");
+      dLatEl.textContent = formatSigned(latMi, "mi", Math.abs(latMi) < 10 ? 1 : 0);
+      dLatEl.className = `v ${latMi > 0 ? "pos" : latMi < 0 ? "neg" : "muted"}`;
+      document.getElementById("s-dlat").textContent =
+        latMi > 0 ? "north" : latMi < 0 ? "south" : "same lat";
+
+      document.getElementById("v-hike").textContent = formatHike(hikeH);
+
+      const firstCompare = diffPanelEl.classList.contains("hidden");
       diffPanelEl.classList.remove("hidden");
+      if (firstCompare) {
+        requestAnimationFrame(() => {
+          const aside = document.getElementById("results");
+          if (aside) aside.scrollTop = aside.scrollHeight;
+          diffPanelEl.scrollIntoView({ block: "nearest", behavior: "smooth" });
+          refreshMapAfterResultsChange();
+        });
+      }
+    }
+
+    function setSaveButtonIdle() {
+      saveBtn.classList.remove("active");
+      saveBtn.textContent = "Save";
+    }
+
+    function setSaveButtonAwaitingB() {
+      saveBtn.classList.add("active");
+      saveBtn.textContent = "Tap map";
+    }
+
+    function setSaveButtonClearB() {
+      saveBtn.classList.remove("active");
+      saveBtn.textContent = "Reset";
     }
 
     function clearComparison() {
       comparisonMode = false;
       savedPointA = null;
       savedPointB = null;
-      saveBtn.classList.remove("active");
-      saveBtn.textContent = "Save";
+      setSaveButtonIdle();
       pointBPanelEl.classList.add("hidden");
       diffPanelEl.classList.add("hidden");
-      diffFeetEl.className = "elevation-feet";
-      diffFeetEl.textContent = "—";
-      diffMetersEl.classList.add("hidden");
-      diffMetersEl.setAttribute("aria-hidden", "true");
-      diffTempEl.classList.add("hidden");
-      diffTempEl.setAttribute("aria-hidden", "true");
-      feetBEl.className = "elevation-status placeholder";
-      feetBEl.textContent = "—";
-      metersBEl.classList.add("hidden");
       errorBEl.classList.add("hidden");
-      latBEl.textContent = "—";
-      lonBEl.textContent = "—";
+      statusBEl.classList.add("hidden");
       hideMarkerB();
-      if (markerA && activeLocation) {
-        markerA.setIcon(dotIcon);
+      if (markerA && activeLocation) markerA.setIcon(dotIcon);
+      refreshMapAfterResultsChange();
+    }
+
+    /**
+     * Clear B + compare, and unsave A.
+     * Keep A’s elev/coords on screen (incl. non-GPS picks) so the user can
+     * keep working that point — but they must Save again before a new B.
+     */
+    function clearPointB() {
+      comparisonMode = false;
+      savedPointA = null;
+      savedPointB = null;
+      setSaveButtonIdle();
+      pointBPanelEl.classList.add("hidden");
+      diffPanelEl.classList.add("hidden");
+      errorBEl.classList.add("hidden");
+      statusBEl.classList.add("hidden");
+      hideMarkerB();
+      // A card + marker stay (activeLocation / currentElevationFeet unchanged)
+      if (activeLocation) {
+        showMarkerA(
+          activeLocation.lat,
+          activeLocation.lng,
+          activeLocation.isCurrentLocation
+        );
       }
+      if (currentElevationFeet != null) saveBtn.disabled = false;
+      refreshMapAfterResultsChange();
     }
 
     function showMarkerA(lat, lng, isCurrentLocation = false) {
       const latlng = L.latLng(lat, lng);
-      const useSavedIcon = comparisonMode || savedPointB != null;
-
+      // A + current location: always blue
       if (markerA) {
         markerA.setLatLng(latlng);
-        markerA.setIcon(useSavedIcon ? savedDotIcon : dotIcon);
+        markerA.setIcon(dotIcon);
       } else {
         markerA = L.marker(latlng, {
-          icon: useSavedIcon ? savedDotIcon : dotIcon,
+          icon: dotIcon,
           zIndexOffset: 1000,
           interactive: false,
         }).addTo(map);
-      }
-
-      if (!comparisonMode) {
-        locationBadgeEl.classList.toggle("hidden", !isCurrentLocation);
       }
     }
 
     function showMarkerB(lat, lng) {
       const latlng = L.latLng(lat, lng);
-
+      // B: always green
       if (markerB) {
         markerB.setLatLng(latlng);
+        markerB.setIcon(pointBIcon);
       } else {
         markerB = L.marker(latlng, {
-          icon: dotIcon,
+          icon: pointBIcon,
           zIndexOffset: 999,
           interactive: false,
         }).addTo(map);
@@ -1268,33 +1230,23 @@
     }
 
     function goToMapLocation(lat, lng, zoom, isCurrentLocation, animate = true) {
-      const latlng = L.latLng(lat, lng);
       showMarkerA(lat, lng, isCurrentLocation);
-
-      if (zoom == null) {
-        return;
-      }
-
+      if (zoom == null) return;
       map.stop();
-      map.setView(latlng, zoom, { animate });
+      map.setView(L.latLng(lat, lng), zoom, { animate });
     }
 
     async function fetchOpenMeteoElevation(lat, lng, signal) {
       const url = new URL("https://api.open-meteo.com/v1/elevation");
       url.searchParams.set("latitude", String(lat));
       url.searchParams.set("longitude", String(lng));
-
       const response = await fetch(url, { signal });
-      if (!response.ok) {
-        throw new Error(`Elevation service returned ${response.status}`);
-      }
-
+      if (!response.ok) throw new Error(`Elevation service returned ${response.status}`);
       const data = await response.json();
       const meters = data.elevation?.[0];
       if (meters == null || !Number.isFinite(meters)) {
         throw new Error("No elevation data for this location.");
       }
-
       return meters * METERS_TO_FEET;
     }
 
@@ -1304,29 +1256,19 @@
       url.searchParams.set("y", String(lat));
       url.searchParams.set("units", "Feet");
       url.searchParams.set("wkid", "4326");
-
       const response = await fetch(url, { signal });
-      if (!response.ok) {
-        throw new Error(`Elevation service returned ${response.status}`);
-      }
-
+      if (!response.ok) throw new Error(`Elevation service returned ${response.status}`);
       const data = await response.json();
       if (data.value == null || Number.isNaN(data.value)) {
         throw new Error("No elevation data for this location.");
       }
-
       return data.value;
     }
 
     async function fetchElevation(lat, lng, signal) {
       const key = cacheKey(lat, lng);
-      if (elevationCache.has(key)) {
-        return elevationCache.get(key);
-      }
-
-      if (elevationInflight.has(key)) {
-        return elevationInflight.get(key);
-      }
+      if (elevationCache.has(key)) return elevationCache.get(key);
+      if (elevationInflight.has(key)) return elevationInflight.get(key);
 
       const task = (async () => {
         try {
@@ -1334,33 +1276,24 @@
           cacheElevation(key, feet);
           return feet;
         } catch (fastError) {
-          if (fastError instanceof DOMException && fastError.name === "AbortError") {
-            throw fastError;
-          }
+          if (fastError instanceof DOMException && fastError.name === "AbortError") throw fastError;
         }
-
         const feet = await fetchUsgsElevation(lat, lng, signal);
         cacheElevation(key, feet);
         return feet;
       })();
 
       elevationInflight.set(key, task);
-
       try {
         return await task;
       } finally {
-        if (elevationInflight.get(key) === task) {
-          elevationInflight.delete(key);
-        }
+        if (elevationInflight.get(key) === task) elevationInflight.delete(key);
       }
     }
 
     function prefetchElevation(lat, lng) {
       const key = cacheKey(lat, lng);
-      if (elevationCache.has(key) || elevationInflight.has(key)) {
-        return;
-      }
-
+      if (elevationCache.has(key) || elevationInflight.has(key)) return;
       const controller = new AbortController();
       fetchElevation(lat, lng, controller.signal).catch(() => {});
     }
@@ -1373,9 +1306,7 @@
         skipComparisonReset = false,
       } = options;
 
-      if (!skipComparisonReset && !comparisonMode) {
-        clearComparison();
-      }
+      if (!skipComparisonReset && !comparisonMode) clearComparison();
 
       if (isCurrentLocation) {
         userLocation = { lat, lng };
@@ -1383,14 +1314,7 @@
       }
 
       activeLocation = { lat, lng, isCurrentLocation };
-
-      goToMapLocation(
-        lat,
-        lng,
-        zoomTo,
-        isCurrentLocation,
-        isCurrentLocation ? false : animateMap,
-      );
+      goToMapLocation(lat, lng, zoomTo, isCurrentLocation, isCurrentLocation ? false : animateMap);
 
       const cached = elevationCache.get(cacheKey(lat, lng));
       if (cached != null) {
@@ -1398,101 +1322,67 @@
         return cached;
       }
 
-      if (activeController) {
-        activeController.abort();
-      }
+      if (activeController) activeController.abort();
       activeController = new AbortController();
       const currentRequest = ++requestId;
-      const signal = activeController.signal;
-
-      setLoading();
+      if (pointAPanelEl.classList.contains("hidden")) {
+        pointAPanelEl.dataset.wasHidden = "1";
+      }
+      setLoading("Looking up elevation…", lat, lng);
 
       try {
-        const feet = await fetchElevation(lat, lng, signal);
-        if (currentRequest !== requestId) {
-          return null;
-        }
+        const feet = await fetchElevation(lat, lng, activeController.signal);
+        if (currentRequest !== requestId) return null;
         setResult(feet, lat, lng, isCurrentLocation);
         return feet;
       } catch (err) {
-        if (err instanceof DOMException && err.name === "AbortError") {
-          return null;
-        }
-        if (currentRequest !== requestId) {
-          return null;
-        }
-        setUnavailable(
-          err instanceof Error
-            ? err.message
-            : "Could not fetch elevation. Try again."
-        );
+        if (err instanceof DOMException && err.name === "AbortError") return null;
+        if (currentRequest !== requestId) return null;
+        // Keep card size; show error under grid
+        document.getElementById("v-elev-a").textContent = "—";
+        document.getElementById("s-elev-a").textContent = "unavailable";
+        showError(err instanceof Error ? err.message : "Could not fetch elevation.");
         return null;
       }
     }
 
-    async function queryLocationB(lat, lng, options = {}) {
-      const { zoomTo = null, animateMap = true } = options;
-
+    async function queryLocationB(lat, lng) {
       showMarkerB(lat, lng);
-      setCoordsB(lat, lng);
-
-      if (zoomTo != null) {
-        map.stop();
-        map.setView(L.latLng(lat, lng), zoomTo, { animate: animateMap });
-      }
 
       const cached = elevationCache.get(cacheKey(lat, lng));
       if (cached != null) {
         savedPointB = { lat, lng, feet: cached };
         setResultB(cached, lat, lng);
         comparisonMode = false;
-        saveBtn.classList.remove("active");
-        saveBtn.textContent = "Save";
+        setSaveButtonClearB();
         return;
       }
 
-      if (activeControllerB) {
-        activeControllerB.abort();
-      }
+      if (activeControllerB) activeControllerB.abort();
       activeControllerB = new AbortController();
       const currentRequest = ++requestIdB;
-      const signal = activeControllerB.signal;
-
-      setLoadingB();
+      setLoadingB(lat, lng);
 
       try {
-        const feet = await fetchElevation(lat, lng, signal);
-        if (currentRequest !== requestIdB) {
-          return;
-        }
+        const feet = await fetchElevation(lat, lng, activeControllerB.signal);
+        if (currentRequest !== requestIdB) return;
         savedPointB = { lat, lng, feet };
         setResultB(feet, lat, lng);
         comparisonMode = false;
-        saveBtn.classList.remove("active");
-        saveBtn.textContent = "Save";
+        setSaveButtonClearB();
       } catch (err) {
-        if (err instanceof DOMException && err.name === "AbortError") {
-          return;
-        }
-        if (currentRequest !== requestIdB) {
-          return;
-        }
-        feetBEl.className = "elevation-status placeholder";
-        feetBEl.textContent = "Unavailable";
-        metersBEl.classList.add("hidden");
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        if (currentRequest !== requestIdB) return;
+        document.getElementById("v-elev-b").textContent = "—";
+        document.getElementById("s-elev-b").textContent = "unavailable";
         errorBEl.textContent =
-          err instanceof Error
-            ? err.message
-            : "Could not fetch elevation. Try again.";
+          err instanceof Error ? err.message : "Could not fetch elevation.";
         errorBEl.classList.remove("hidden");
       }
     }
 
     function enterComparisonMode() {
-      if (currentElevationFeet == null || activeLocation == null) {
-        return;
-      }
-
+      if (currentElevationFeet == null || activeLocation == null) return;
       comparisonMode = true;
       savedPointA = {
         lat: activeLocation.lat,
@@ -1500,37 +1390,32 @@
         feet: currentElevationFeet,
         isCurrentLocation: activeLocation.isCurrentLocation,
       };
+      showMarkerA(savedPointA.lat, savedPointA.lng, savedPointA.isCurrentLocation);
+      setSaveButtonAwaitingB();
+    }
 
-      showMarkerA(
-        savedPointA.lat,
-        savedPointA.lng,
-        savedPointA.isCurrentLocation,
-      );
-
-      saveBtn.classList.add("active");
-      saveBtn.textContent = "Tap map";
+    function cancelAwaitingB() {
+      comparisonMode = false;
+      savedPointA = null;
+      setSaveButtonIdle();
     }
 
     function handleLocationFailure(message) {
-      locationBadgeEl.classList.add("hidden");
       setIdlePrompt();
       showError(message);
     }
 
     function requestCurrentLocation() {
       if (!navigator.geolocation) {
-        handleLocationFailure(
-          "Geolocation is not supported. Click the map to pick a point."
-        );
+        handleLocationFailure("Geolocation not supported. Tap the map.");
         return;
       }
-
-      setLoading("Finding your location…");
-
+      // Status only until we have coords — no empty card flash
+      statusAEl.textContent = "Finding your location…";
+      statusAEl.classList.remove("hidden");
       navigator.geolocation.getCurrentPosition(
         (position) => {
-          const { latitude, longitude } = position.coords;
-          queryLocation(latitude, longitude, {
+          queryLocation(position.coords.latitude, position.coords.longitude, {
             isCurrentLocation: true,
             zoomTo: 12,
             animateMap: false,
@@ -1538,37 +1423,27 @@
         },
         (error) => {
           const messages = {
-            1: "Location permission denied. Click the map to pick a point.",
-            2: "Location unavailable. Click the map to pick a point.",
-            3: "Location request timed out. Click the map to pick a point.",
+            1: "Location denied. Tap the map.",
+            2: "Location unavailable. Tap the map.",
+            3: "Location timed out. Tap the map.",
           };
-          handleLocationFailure(
-            messages[error.code] || "Could not determine your location."
-          );
+          handleLocationFailure(messages[error.code] || "Could not get location.");
         },
-        {
-          enableHighAccuracy: false,
-          timeout: 10000,
-          maximumAge: 300000,
-        }
+        { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 }
       );
     }
 
     saveBtn.addEventListener("click", (event) => {
       event.stopPropagation();
+      // Waiting for B: tap button again cancels
       if (comparisonMode) {
+        cancelAwaitingB();
         return;
       }
+      // Compare complete: clear B only, keep A
       if (savedPointB != null) {
-        clearComparison();
-        if (activeLocation && currentElevationFeet != null) {
-          renderElevation(feetEl, metersEl, currentElevationFeet);
-          setCoordsA(activeLocation.lat, activeLocation.lng);
-          locationBadgeEl.classList.toggle(
-            "hidden",
-            !activeLocation.isCurrentLocation,
-          );
-        }
+        clearPointB();
+        return;
       }
       enterComparisonMode();
     });
@@ -1576,42 +1451,120 @@
     map.on("click", (event) => {
       const { lat, lng } = event.latlng;
       prefetchElevation(lat, lng);
-
+      // Save → next tap is B
       if (comparisonMode && savedPointA) {
         queryLocationB(lat, lng);
         return;
       }
-
+      // Compare already showing: retap replaces B only (A stays put)
+      if (savedPointB != null && activeLocation != null && currentElevationFeet != null) {
+        savedPointA = {
+          lat: activeLocation.lat,
+          lng: activeLocation.lng,
+          feet: currentElevationFeet,
+          isCurrentLocation: activeLocation.isCurrentLocation,
+        };
+        queryLocationB(lat, lng);
+        return;
+      }
+      // No B yet: normal A pick
       queryLocation(lat, lng);
     });
 
+    /* —— Tap tips (Solar Dashboard style) —— */
+    function initCellTips() {
+      const hosts = Array.from(document.querySelectorAll("[data-tip]"));
+      let down = null;
+
+      function setOpen(host, open) {
+        hosts.forEach((h) => {
+          h.classList.toggle("is-explain", open && h === host);
+          h.setAttribute("aria-expanded", open && h === host ? "true" : "false");
+        });
+      }
+
+      hosts.forEach((host) => {
+        const text = CELL_TIPS[host.dataset.tip];
+        if (!text) return;
+        const tip = document.createElement("span");
+        tip.className = "cell-tip";
+        tip.textContent = text;
+        tip.setAttribute("aria-hidden", "true");
+        host.appendChild(tip);
+        const label = host.querySelector(".k")?.textContent || "Metric";
+        host.setAttribute("aria-label", `${label}. Tap for explanation.`);
+        host.setAttribute("aria-expanded", "false");
+      });
+
+      function hostFromEvent(e) {
+        const path = typeof e.composedPath === "function" ? e.composedPath() : [];
+        for (const node of path) {
+          if (node && node.dataset && node.dataset.tip) return node;
+        }
+        return e.target?.closest?.("[data-tip]") || null;
+      }
+
+      document.addEventListener(
+        "pointerdown",
+        (e) => {
+          const host = hostFromEvent(e);
+          if (!host || !hosts.includes(host)) {
+            down = null;
+            return;
+          }
+          down = { host, x: e.clientX, y: e.clientY, id: e.pointerId };
+        },
+        true
+      );
+
+      document.addEventListener(
+        "pointerup",
+        (e) => {
+          if (!down || down.id !== e.pointerId) return;
+          const start = down;
+          down = null;
+          const dx = e.clientX - start.x;
+          const dy = e.clientY - start.y;
+          if (dx * dx + dy * dy > 100) return;
+          const host = hostFromEvent(e) || start.host;
+          if (!host || !hosts.includes(host)) return;
+          e.preventDefault();
+          setOpen(host, !host.classList.contains("is-explain"));
+        },
+        true
+      );
+
+      document.addEventListener(
+        "pointerdown",
+        (e) => {
+          if (hostFromEvent(e)) return;
+          setOpen(null, false);
+        },
+        false
+      );
+    }
+
+    initCellTips();
+
     map.whenReady(() => {
-      // One forced measure for Leaflet's first size, then quiet boot window
-      // so resize/visualViewport settle events don't thrash the map.
-      lastPwaFillKey = ""; // adopt head-script vars without treating as change
+      lastPwaFillKey = "";
       const root = document.documentElement;
       if (root.classList.contains("pwa-standalone")) {
         const fillH = pwaFillHeightPx();
         const extra = pwaExtraBottomPx();
-        lastPwaFillKey = `${fillH}|${extra}`;
-        // Only write if head values already match — avoids first-paint height jump
         const curH = root.style.getPropertyValue("--pwa-fill-h").trim();
         const curE = root.style.getPropertyValue("--pwa-extra-b").trim();
-        if (curH !== `${fillH}px` || curE !== `${extra}px`) {
-          // Prefer larger stable fill so we don't shrink after paint
-          const headH = parseFloat(curH) || 0;
-          const headE = parseFloat(curE) || 0;
-          const useH = Math.max(fillH, headH);
-          const useE = Math.max(extra, headE);
-          lastPwaFillKey = `${useH}|${useE}`;
-          root.style.setProperty("--pwa-fill-h", `${useH}px`);
-          root.style.setProperty("--pwa-extra-b", `${useE}px`);
-        }
+        const headH = parseFloat(curH) || 0;
+        const headE = parseFloat(curE) || 0;
+        const useH = Math.max(fillH, headH);
+        const useE = Math.max(extra, headE);
+        lastPwaFillKey = `${useH}|${useE}`;
+        root.style.setProperty("--pwa-fill-h", `${useH}px`);
+        root.style.setProperty("--pwa-extra-b", `${useE}px`);
       }
       invalidateMapIfNeeded(true);
       bootQuietUntil = performance.now() + 600;
       requestCurrentLocation();
-      // One quiet trailing check after iOS viewport settle — only if size changed
       setTimeout(() => applyLayout(false), 650);
     });
   </script>
