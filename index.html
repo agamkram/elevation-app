@@ -23,6 +23,35 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Elevation" />
+  <script>
+    /* iOS A2HS: lock fill height before first paint.
+       Phone: screen.height > inner → use screen.
+       iPad: screen.* often *undershoots* inner → add safe-area extra.
+       See Desktop/Bottom:full bleed.txt (Bug B). Do NOT use max-height:100dvh. */
+    (function () {
+      var n = window.navigator;
+      var standalone =
+        n.standalone === true ||
+        window.matchMedia("(display-mode: standalone)").matches ||
+        window.matchMedia("(display-mode: fullscreen)").matches;
+      if (!standalone) return;
+      var root = document.documentElement;
+      root.classList.add("pwa-standalone");
+      var iw = window.innerWidth || 0;
+      var ih = window.innerHeight || 0;
+      var sw = window.screen.width || 0;
+      var sh = window.screen.height || 0;
+      var screenMax = Math.max(sw, sh);
+      var screenMin = Math.min(sw, sh);
+      var fillH = ih >= iw ? Math.max(ih, screenMax) : Math.max(ih, screenMin);
+      var extra = 0;
+      if (Math.min(iw, ih) >= 600 && screenMax < ih - 10) {
+        extra = 20; /* refined to real insetB once body exists */
+      }
+      root.style.setProperty("--pwa-fill-h", fillH + "px");
+      root.style.setProperty("--pwa-extra-b", extra + "px");
+    })();
+  </script>
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" type="image/png" href="icon-192.png" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
@@ -61,21 +90,40 @@
       padding: 0;
     }
 
+    /*
+     * Full-bleed shell. Do NOT use max-height:100dvh — undershoots on iOS PWA
+     * and creates the bottom black strip (Bug B / Bottom:full bleed.txt).
+     * Safari tabs: 100dvh / -webkit-fill-available. Home-screen PWA: locked
+     * to screen height via --pwa-fill-h (see head script + syncPwaFillHeight).
+     */
     html {
       height: 100%;
-      max-height: 100dvh;
+      min-height: 100%;
+      min-height: -webkit-fill-available;
       overflow: hidden;
+      background: var(--bg);
     }
 
     body {
       font-family: "DM Sans", system-ui, sans-serif;
       background: var(--bg);
       color: var(--text);
+      height: 100%;
+      min-height: 100%;
+      min-height: -webkit-fill-available;
       height: 100dvh;
-      max-height: 100dvh;
+      min-height: 100dvh;
       overflow: hidden;
       display: flex;
       flex-direction: column;
+      -webkit-text-size-adjust: 100%;
+    }
+
+    html.pwa-standalone,
+    html.pwa-standalone body {
+      height: calc(var(--pwa-fill-h, 100%) + var(--pwa-extra-b, 0px));
+      min-height: calc(var(--pwa-fill-h, 100%) + var(--pwa-extra-b, 0px));
+      max-height: none;
     }
 
     header {
@@ -857,9 +905,132 @@
       requestCurrentLocation();
     });
 
-    window.addEventListener("resize", () => {
+    let lastPwaFillKey = "";
+    let lastMapBox = { w: 0, h: 0 };
+    let layoutRaf = 0;
+    let layoutTrailTimer = null;
+    let bootQuietUntil = performance.now() + 600;
+
+    function readSafeInsetBottom() {
+      const probe = document.createElement("div");
+      probe.style.cssText =
+        "position:fixed;visibility:hidden;pointer-events:none;padding-bottom:env(safe-area-inset-bottom,0px)";
+      document.body.appendChild(probe);
+      const px = parseFloat(getComputedStyle(probe).paddingBottom) || 0;
+      probe.remove();
+      return px;
+    }
+
+    function pwaFillHeightPx() {
+      const iw = window.innerWidth || 0;
+      const ih = window.innerHeight || 0;
+      const sw = window.screen.width || 0;
+      const sh = window.screen.height || 0;
+      // iOS keeps screen.* in portrait metrics; pick the axis for current height.
+      if (ih >= iw) return Math.max(ih, Math.max(sw, sh));
+      return Math.max(ih, Math.min(sw, sh));
+    }
+
+    /** iPad PWA: screen.* undershoots CSS inner — phone uses screen height instead. */
+    function pwaExtraBottomPx() {
+      const iw = window.innerWidth || 0;
+      const ih = window.innerHeight || 0;
+      const sw = window.screen.width || 0;
+      const sh = window.screen.height || 0;
+      const screenMax = Math.max(sw, sh);
+      if (Math.min(iw, ih) < 600) return 0;
+      if (screenMax >= ih - 10) return 0;
+      return Math.max(readSafeInsetBottom(), 20);
+    }
+
+    /** Returns true when CSS vars actually changed (avoid no-op reflow). */
+    function syncPwaFillHeight() {
+      const root = document.documentElement;
+      if (!root.classList.contains("pwa-standalone")) {
+        if (lastPwaFillKey !== "") {
+          root.style.removeProperty("--pwa-fill-h");
+          root.style.removeProperty("--pwa-extra-b");
+          lastPwaFillKey = "";
+          return true;
+        }
+        return false;
+      }
+      const fillH = pwaFillHeightPx();
+      const extra = pwaExtraBottomPx();
+      const key = `${fillH}|${extra}`;
+      if (key === lastPwaFillKey) return false;
+      // Head script already set vars — keep first paint stable; only adopt
+      // later values if they differ by more than 1px (subpixel noise).
+      if (lastPwaFillKey === "") {
+        lastPwaFillKey = key;
+        root.style.setProperty("--pwa-fill-h", `${fillH}px`);
+        root.style.setProperty("--pwa-extra-b", `${extra}px`);
+        return false; // initial lock — no extra invalidate from this alone
+      }
+      const [prevH, prevE] = lastPwaFillKey.split("|").map(Number);
+      if (Math.abs(prevH - fillH) < 1.5 && Math.abs(prevE - extra) < 1.5) {
+        return false;
+      }
+      lastPwaFillKey = key;
+      root.style.setProperty("--pwa-fill-h", `${fillH}px`);
+      root.style.setProperty("--pwa-extra-b", `${extra}px`);
+      return true;
+    }
+
+    function invalidateMapIfNeeded(force = false) {
+      const el = map.getContainer();
+      const w = el.clientWidth;
+      const h = el.clientHeight;
+      if (!force && w === lastMapBox.w && h === lastMapBox.h && w > 0 && h > 0) {
+        return false;
+      }
+      lastMapBox = { w, h };
+      map.invalidateSize({ animate: false, pan: false });
+      return true;
+    }
+
+    function applyLayout(force = false) {
+      const heightChanged = syncPwaFillHeight();
+      invalidateMapIfNeeded(force || heightChanged);
+    }
+
+    /** Coalesce resize / visualViewport noise into one paint + one short trailing check. */
+    function onViewportLayout(options = {}) {
+      const { orientation = false } = options;
+      cancelAnimationFrame(layoutRaf);
       clearTimeout(resizeTimer);
-      resizeTimer = setTimeout(() => map.invalidateSize(), 150);
+      clearTimeout(layoutTrailTimer);
+
+      // During boot, viewport events fire a lot — batch to one trailing pass
+      // so the shell doesn't jump/repaint mid-open.
+      if (!orientation && performance.now() < bootQuietUntil) {
+        clearTimeout(layoutTrailTimer);
+        layoutTrailTimer = setTimeout(() => {
+          applyLayout(false);
+        }, Math.max(0, bootQuietUntil - performance.now()));
+        return;
+      }
+
+      layoutRaf = requestAnimationFrame(() => {
+        applyLayout(false);
+        // Single trailing settle (iOS can report height late after rotate)
+        resizeTimer = setTimeout(() => applyLayout(false), orientation ? 280 : 120);
+      });
+    }
+
+    window.addEventListener("resize", () => onViewportLayout());
+    window.addEventListener("orientationchange", () => {
+      bootQuietUntil = 0; // allow immediate layout after rotate
+      setTimeout(() => onViewportLayout({ orientation: true }), 50);
+      setTimeout(() => applyLayout(true), 320);
+    });
+    window.visualViewport?.addEventListener("resize", () => onViewportLayout());
+    window.addEventListener("pageshow", (event) => {
+      // Only bfcache restore — initial load is handled by whenReady
+      if (event.persisted) {
+        bootQuietUntil = 0;
+        onViewportLayout();
+      }
     });
 
     function cacheKey(lat, lng) {
@@ -1415,8 +1586,33 @@
     });
 
     map.whenReady(() => {
-      map.invalidateSize();
+      // One forced measure for Leaflet's first size, then quiet boot window
+      // so resize/visualViewport settle events don't thrash the map.
+      lastPwaFillKey = ""; // adopt head-script vars without treating as change
+      const root = document.documentElement;
+      if (root.classList.contains("pwa-standalone")) {
+        const fillH = pwaFillHeightPx();
+        const extra = pwaExtraBottomPx();
+        lastPwaFillKey = `${fillH}|${extra}`;
+        // Only write if head values already match — avoids first-paint height jump
+        const curH = root.style.getPropertyValue("--pwa-fill-h").trim();
+        const curE = root.style.getPropertyValue("--pwa-extra-b").trim();
+        if (curH !== `${fillH}px` || curE !== `${extra}px`) {
+          // Prefer larger stable fill so we don't shrink after paint
+          const headH = parseFloat(curH) || 0;
+          const headE = parseFloat(curE) || 0;
+          const useH = Math.max(fillH, headH);
+          const useE = Math.max(extra, headE);
+          lastPwaFillKey = `${useH}|${useE}`;
+          root.style.setProperty("--pwa-fill-h", `${useH}px`);
+          root.style.setProperty("--pwa-extra-b", `${useE}px`);
+        }
+      }
+      invalidateMapIfNeeded(true);
+      bootQuietUntil = performance.now() + 600;
       requestCurrentLocation();
+      // One quiet trailing check after iOS viewport settle — only if size changed
+      setTimeout(() => applyLayout(false), 650);
     });
   </script>
   <script>
